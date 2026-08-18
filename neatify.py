@@ -1,6 +1,8 @@
 # Python toools for working with files and folders
 import os
 import platform
+# Imports tools for opening files on macOS and Linux
+import subprocess
 # Imports Python's date/time tools
 from datetime import datetime
 
@@ -73,20 +75,83 @@ def get_extension(file_name):
 
     return extension
 
+# Find item starting from ~, which is normally home folder
+def find_item(item_name, search_folder="~"):
+    search_path = paths.expanduser(search_folder)
+    found_items = []
+
+    if not paths.exists(search_path):
+        print("Error: search folder does not exists:", search_path)
+        return found_items
+
+    search_name = item_name.lower()
+
+    for current_folder, folders, files in system.walk(search_path):
+        for folder in folders:
+            if search_name in folder.lower():
+                found_items.append(paths.join(current_folder, folder))
+
+        for file in files:
+            if search_name in file.lower():
+                found_items.append(paths.join(current_folder, file))
+
+    return found_items
+
+def open_item(item_path):
+    full_path = paths.expanduser(item_path)
+
+    if not paths.exists(full_path):
+        print("Error: item does not exist:", full_path)
+        return
+    # Checks the operating system
+    os_name = platform.system()
+
+    if os_name == "Darwin":
+        subprocess.run(["open", full_path])
+    elif os_name == "Windows":
+        system.startfile(full_path)
+    elif os_name == "Linux":
+        subprocess.run("xdg-open", full_path)
+    else:
+        print("Error: opening files is not supported on this OS.")
+
+def find_and_open(item_name, search_folder="~"):
+    results = find_item(item_name, search_folder)
+
+    if len(results) == 0:
+        print("No matching item found.")
+        return
+
+    if len(results) == 1:
+        open_item(results[0])
+        return
+    # If several items found, list them instead of opening any of them
+    print("Multiple items found:")
+
+    number = 1
+
+    for results in results:
+        print(str(number) + ".", results)
+        number = number + 1
+
 def move_file(full_path, destination, dry_run):
     if dry_run:
         print("Would move:", full_path, "->", destination)
     else:
+        move_id = create_move_id()
         system.rename(full_path, destination)
         print("Moved:", full_path, "->", destination)
-        write_history("Moved", full_path, destination)
+        write_history("Moved", full_path, destination, move_id)
 
-def write_history(action, old_path, new_path):
+def create_move_id():
+    return "move_" + datetime.now().strftime("%Y%m%d%H%MS%f")
+
+def write_history(action, old_path, new_path, move_id):
     # Gets the current date and time and Formats the date/time into readable text, in that order
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Opens the history file in append mode and closes it afterwards.
     with open("neatify_history.txt", "a") as history_file:
-        history_file.write(timestamp + " | " + action + " | " + old_path + " -> " + new_path + "\n")
+        history_file.write(timestamp + " | " + move_id + " | " + action + " | " + old_path + " -> " + new_path + "\n")
 
 def undo_last_move():
     history_path = "neatify_history.txt"
@@ -98,13 +163,24 @@ def undo_last_move():
     with open(history_path, "r") as history_file:
         lines = history_file.readlines()
 
+    undone_move_ids = []
+
     for line in reversed(lines):
-        if " | MOVED | " in line:
-            parts = line.strip().split(" | ")
-            paths_part = parts[2]
+        parts = line.strip().split(" | ")
 
+        if len(parts) != 4:
+            continue
+        move_id = parts[1]
+        action = parts[2]
+        paths_part = parts[3]
+
+        if action == "UNDONE":
+            undone_move_ids.append(move_id)
+            continue
+
+        if " | MOVED | " and move_id not in undone_move_ids:
             old_path, new_path = paths_part.split(" -> ")
-
+            
             if not paths.exists(new_path):
                 print("Error: moved file does not exist:", new_path)
                 return
@@ -115,7 +191,7 @@ def undo_last_move():
 
             system.rename(new_path, old_path)
             print("Undone:", new_path, "->", old_path)
-            write_history("UNDONE", new_path, old_path)
+            write_history("UNDONE", new_path, old_path, move_id)
             return
 
     print("No move history found.")
