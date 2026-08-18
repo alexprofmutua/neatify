@@ -4,7 +4,6 @@ import os
 # Shortcuts
 system = os
 paths = system.path
-dry_run = True  # Our safe mode, only print
 
 extension_categories = {
     "jpg": "Images",
@@ -89,7 +88,7 @@ def get_unique_destination(destination):
 
         counter = counter + 1
 
-def organize_folder(folder_path):
+def organize_folder(folder_path, dry_run=True):
     # Converts the string into full path
     folder = paths.expanduser(folder_path)
 
@@ -104,13 +103,14 @@ def organize_folder(folder_path):
         return
 
     moved_count = 0
-    skipped_count = 0
+    hidden_count = 0
+    folder_count = 0
 
     # Converting the files in folder into full paths
     for file in system.listdir(folder):
         # Skips hidden files
         if file[:1] == ".":
-            skipped_count = skipped_count + 1
+            hidden_count = hidden_count + 1
             continue
 
         full_path = paths.join(folder, file)
@@ -126,14 +126,22 @@ def organize_folder(folder_path):
             system.makedirs(extension_folder, exist_ok=True)
             # Creates the final path where the file would go
             destination = paths.join(extension_folder, file)
-
             unique_destination = get_unique_destination(destination)
             move_file(full_path, unique_destination, dry_run)
             moved_count = moved_count + 1
+        else:
+            # If it is not a file, skip it and count as skipped
+            folder_count = folder_count + 1
 
-            print("Done.")
-            print("Files organized:", moved_count)
-            print("Files skipped:", skipped_count)
+    print("Done.")
+
+    if dry_run:
+        print("Files that would be organized:", moved_count)
+    else:
+        print("Files organized:", moved_count)
+    
+    print("Hidden items skipped:", hidden_count)
+    print("Folders skipped:", folder_count)
 
 if __name__ == "__main__":
-    organize_folder("~/Downloads")
+    organize_folder("~/Downloads", dry_run=True)
