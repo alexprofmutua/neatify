@@ -232,9 +232,4 @@ def organize_folder(folder_path, dry_run=True):
     print("Folders skipped:", folder_count)
 
 if __name__ == "__main__":
-    organize_folder("~/Downloads", dry_run=True)
-    organize_folder("~/Desktop", dry_run=True)
-    organize_folder("~/Documents", dry_run=True)
-    organize_folder("~/Pictures", dry_run=True)
-    organize_folder("~/Music", dry_run=True)
-    organize_folder("~/Videos", dry_run=True)
+    organize_common_folders(dry_run=True)
