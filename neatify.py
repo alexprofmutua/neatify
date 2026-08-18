@@ -231,10 +231,6 @@ def organize_folder(folder_path, dry_run=True):
     print("Hidden items skipped:", hidden_count)
     print("Folders skipped:", folder_count)
 
-def organize_multiple_folders(folder_paths, dry_run=True):
-    for folder_path in folder_paths:
-        organize_folder(folder_path, dry_run)
-
 if __name__ == "__main__":
     organize_folder("~/Downloads", dry_run=True)
     organize_folder("~/Desktop", dry_run=True)
