@@ -1,3 +1,5 @@
+# Imports Python's date/time tools
+from datetime import datetime
 # Python toools for working with files and folders
 import os
 
@@ -67,6 +69,13 @@ def move_file(full_path, destination, dry_run):
     else:
         system.rename(full_path, destination)
         print("Moved:", full_path, "->", destination)
+
+def write_history(action, message):
+    # Gets the current date and time and Formats the date/time into readable text, in that order
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Opens the history file in append mode and closes it afterwards.
+    with open("neatify_history.txt", "a") as history_file:
+        history_file.write(timestamp + " | " + action + " | " + message + "\n")
 
 def get_unique_destination(destination):
     if not paths.exists(destination):
