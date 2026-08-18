@@ -1,11 +1,21 @@
 # Python toools for working with files and folders
 import os
+import platform
 # Imports Python's date/time tools
 from datetime import datetime
 
 # Shortcuts
 system = os
 paths = system.path
+
+folders_to_organize = [
+    "~/Downloads",
+    "~/Desktop",
+    "~/Documents",
+    "~/Pictures",
+    "~/Music",
+    "~/Movies",
+]
 
 extension_categories = {
     "jpg": "Images",
@@ -130,6 +140,42 @@ def get_unique_destination(destination):
 
         counter = counter + 1
 
+
+def get_common_folder_names():
+    os_name = platform.system()
+
+    if os_name == "Darwin":
+        return ["Downloads", "Desktop", "Documents", "Pictures", "Music", "Movies"]
+
+    if os_name == "Windows":
+        return ["Downloads", "Desktop", "Documents", "Pictures", "Music", "Videos"]
+
+    if os_name == "Linux":
+        return ["Downloads", "Desktop", "Documents", "Pictures", "Music", "Videos"]
+
+    return ["Downloads", "Desktop", "Documents"]
+
+def get_common_folders():
+    home = paths.expanduser("~")
+    folder_names = get_common_folder_names()
+
+    folders = []
+
+    for folder_name in folder_names:
+        folder_path = paths.join(home, folder_name)
+
+        if paths.exists(folder_path) and paths.isdir(folder_path):
+            folders.append(folder_path)
+
+    return folders
+
+def organize_common_folders(dry_run=True):
+    folders = get_common_folders()
+
+    for folder in folders:
+        print("Organizing folder:", folder)
+        organize_folder(folder, dry_run)
+
 def organize_folder(folder_path, dry_run=True):
     # Converts the string into full path
     folder = paths.expanduser(folder_path)
@@ -185,5 +231,14 @@ def organize_folder(folder_path, dry_run=True):
     print("Hidden items skipped:", hidden_count)
     print("Folders skipped:", folder_count)
 
+def organize_multiple_folders(folder_paths, dry_run=True):
+    for folder_path in folder_paths:
+        organize_folder(folder_path, dry_run)
+
 if __name__ == "__main__":
     organize_folder("~/Downloads", dry_run=True)
+    organize_folder("~/Desktop", dry_run=True)
+    organize_folder("~/Documents", dry_run=True)
+    organize_folder("~/Pictures", dry_run=True)
+    organize_folder("~/Music", dry_run=True)
+    organize_folder("~/Videos", dry_run=True)
