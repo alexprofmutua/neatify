@@ -1,7 +1,7 @@
-# Imports Python's date/time tools
-from datetime import datetime
 # Python toools for working with files and folders
 import os
+# Imports Python's date/time tools
+from datetime import datetime
 
 # Shortcuts
 system = os
@@ -69,13 +69,46 @@ def move_file(full_path, destination, dry_run):
     else:
         system.rename(full_path, destination)
         print("Moved:", full_path, "->", destination)
+        write_history("Moved", full_path, destination)
 
-def write_history(action, message):
+def write_history(action, old_path, new_path):
     # Gets the current date and time and Formats the date/time into readable text, in that order
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Opens the history file in append mode and closes it afterwards.
     with open("neatify_history.txt", "a") as history_file:
-        history_file.write(timestamp + " | " + action + " | " + message + "\n")
+        history_file.write(timestamp + " | " + action + " | " + old_path + " -> " + new_path + "\n")
+
+def undo_last_move():
+    history_path = "neatify_history.txt"
+
+    if not paths.exists(history_path):
+        print("No history file found.")
+        return
+
+    with open(history_path, "r") as history_file:
+        lines = history_file.readlines()
+
+    for line in reversed(lines):
+        if " | MOVED | " in line:
+            parts = line.strip().split(" | ")
+            paths_part = parts[2]
+
+            old_path, new_path = paths_part.split(" -> ")
+
+            if not paths.exists(new_path):
+                print("Error: moved file does not exist:", new_path)
+                return
+
+            if paths.exists(old_path):
+                print("Error: original location already has a file:", old_path)
+                return
+
+            system.rename(new_path, old_path)
+            print("Undone:", new_path, "->", old_path)
+            write_history("UNDONE", new_path, old_path)
+            return
+
+    print("No move history found.")
 
 def get_unique_destination(destination):
     if not paths.exists(destination):
