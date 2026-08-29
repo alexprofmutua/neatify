@@ -24,4 +24,4 @@ python3 neatify.py
 ```
 <img width="616" height="224" alt="Screenshot 2025-12-21 at 9 45 08 AM" src="https://github.com/user-attachments/assets/86506d33-f680-417d-85ab-75bc6cb7a24a" />
 
-Developed by a Williams College Freshman | Winter 2025
+Developed by Alex M
