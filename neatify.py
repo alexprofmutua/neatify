@@ -5,6 +5,7 @@ import platform
 import subprocess
 # Imports Python's date/time tools
 from datetime import datetime
+from app_paths import migrate_local_file
 
 # Shortcuts
 system = os
@@ -152,17 +153,20 @@ def write_history(action, old_path, new_path, move_id):
     # Gets the current date and time and Formats the date/time into readable text, in that order
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Opens the history file in append mode and closes it afterwards.
-    with open("neatify_history.txt", "a") as history_file:
+    with open(get_history_path(), "a", encoding="utf-8") as history_file:
         history_file.write(timestamp + " | " + move_id + " | " + action + " | " + old_path + " -> " + new_path + "\n")
 
+def get_history_path():
+    return migrate_local_file("neatify_history.txt")
+
 def undo_last_move():
-    history_path = "neatify_history.txt"
+    history_path = get_history_path()
 
     if not paths.exists(history_path):
         print("No history file found.")
         return "No history file found."
 
-    with open(history_path, "r") as history_file:
+    with open(history_path, "r", encoding="utf-8") as history_file:
         lines = history_file.readlines()
 
     undone_move_ids = []
@@ -187,12 +191,12 @@ def undo_last_move():
     return "No move history found."
 
 def undo_move_by_id(target_move_id):
-    history_path = "neatify_history.txt"
+    history_path = get_history_path()
 
     if not paths.exists(history_path):
         return "No history file found."
 
-    with open(history_path, "r") as history_file:
+    with open(history_path, "r", encoding="utf-8") as history_file:
         lines = history_file.readlines()
 
     moves_to_undo = []

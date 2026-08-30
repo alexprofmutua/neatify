@@ -3,10 +3,8 @@
 import json
 import os
 
+from app_paths import migrate_local_file
 from neatify import extension_categories
-
-
-RULES_FILE = "neatify_rules.json"
 
 
 def get_default_rules():
@@ -16,11 +14,17 @@ def get_default_rules():
     }
 
 
+def get_rules_file():
+    return migrate_local_file("neatify_rules.json")
+
+
 def load_rules():
-    if not os.path.exists(RULES_FILE):
+    rules_file_path = get_rules_file()
+
+    if not os.path.exists(rules_file_path):
         return get_default_rules()
 
-    with open(RULES_FILE, "r") as rules_file:
+    with open(rules_file_path, "r", encoding="utf-8") as rules_file:
         rules = json.load(rules_file)
 
     if "extensions" not in rules:
@@ -33,7 +37,9 @@ def load_rules():
 
 
 def save_rules(rules):
-    with open(RULES_FILE, "w") as rules_file:
+    rules_file_path = get_rules_file()
+
+    with open(rules_file_path, "w", encoding="utf-8") as rules_file:
         json.dump(rules, rules_file, indent=4)
 
 

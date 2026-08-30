@@ -8,6 +8,7 @@ venv/
 neatify_history.txt
 neatify_settings.json
 neatify_rules.json
+.neatify_data/
 
 .DS_Store
 

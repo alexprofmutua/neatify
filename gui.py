@@ -2,6 +2,7 @@
 
 import sys  # Imports tools for talking to the operating system
 
+from app_paths import get_project_path  # Imports our tool for finding project files
 from PySide6.QtGui import QIcon  # Imports the app icon tool
 from PySide6.QtWidgets import QApplication  # Imports the main PySide6 app tool
 
@@ -10,7 +11,7 @@ from window import NeatifyWindow  # Imports our custom Neatify window
 
 def main():
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("assets/temp-logo.svg"))
+    app.setWindowIcon(QIcon(get_project_path("assets", "temp-logo.svg")))
 
     window = NeatifyWindow()
     window.show()

@@ -3,8 +3,7 @@
 import json
 import os
 
-
-SETTINGS_FILE = "neatify_settings.json"
+from app_paths import migrate_local_file
 
 
 def get_default_settings():
@@ -15,11 +14,17 @@ def get_default_settings():
     }
 
 
+def get_settings_file():
+    return migrate_local_file("neatify_settings.json")
+
+
 def load_app_settings():
-    if not os.path.exists(SETTINGS_FILE):
+    settings_file_path = get_settings_file()
+
+    if not os.path.exists(settings_file_path):
         return get_default_settings()
 
-    with open(SETTINGS_FILE, "r") as settings_file:
+    with open(settings_file_path, "r", encoding="utf-8") as settings_file:
         settings = json.load(settings_file)
 
     defaults = get_default_settings()
@@ -32,5 +37,7 @@ def load_app_settings():
 
 
 def save_app_settings(settings):
-    with open(SETTINGS_FILE, "w") as settings_file:
+    settings_file_path = get_settings_file()
+
+    with open(settings_file_path, "w", encoding="utf-8") as settings_file:
         json.dump(settings, settings_file, indent=4)

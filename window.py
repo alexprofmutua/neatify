@@ -1,6 +1,7 @@
 """Builds the window"""
 
 import os   # Imports Python's file and folder tools
+from app_paths import get_project_path
 from app_settings import load_app_settings, save_app_settings
 from style import APP_STYLE
 from state import AppState
@@ -8,7 +9,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QStackedWidget, QStyle, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 from components import create_folder_button
-from neatify import get_common_folders, open_item, organize_folder, preview_organize_folder, undo_last_move, undo_move_by_id
+from neatify import get_common_folders, get_history_path, open_item, organize_folder, preview_organize_folder, undo_last_move, undo_move_by_id
 from rules import add_extension_rule, add_keyword_rule, find_with_filters, get_category_for_file, load_rules, remove_extension_rule, remove_keyword_rule
 
 
@@ -23,7 +24,7 @@ class NeatifyWindow(QMainWindow):
         self.folder_buttons = []
         self.center_folder_buttons = []
         self.setWindowTitle("Neatify")
-        self.setWindowIcon(QIcon("assets/temp-logo.svg"))
+        self.setWindowIcon(QIcon(get_project_path("assets", "temp-logo.svg")))
         self.setStyleSheet(APP_STYLE)
         self.resize(920, 560)
         self.build_interface()
@@ -1220,6 +1221,7 @@ class NeatifyWindow(QMainWindow):
     def organize_selected_folder(self):
         folder_path = self.state.current_arrange_folder_path
         organize_folder(folder_path, dry_run=False)
+        self.state.current_arrange_folder_path = ""
         self.folder_summary_label.setText(self.get_folder_status(self.state.selected_folder_path))
         self.update_folder_cards()
         self.update_folder_contents_list(self.state.current_view_folder_path)
@@ -1285,12 +1287,12 @@ class NeatifyWindow(QMainWindow):
                 batch_item.addChild(file_item)
 
     def get_history_batches(self):
-        history_path = "neatify_history.txt"
+        history_path = get_history_path()
 
         if not os.path.exists(history_path):
             return []
 
-        with open(history_path, "r") as history_file:
+        with open(history_path, "r", encoding="utf-8") as history_file:
             lines = history_file.readlines()
 
         batches = {}
