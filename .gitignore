@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+neat/
+.venv/
+venv/
+
+neatify_history.txt
+neatify_settings.json
+neatify_rules.json
+
+.DS_Store
