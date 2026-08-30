@@ -41,7 +41,13 @@ The app can be run from source during development or packaged into a downloadabl
 
 ### macOS
 
-Download the latest release file:
+Download the latest release from the GitHub Releases page:
+
+```text
+https://github.com/alexprofmutua/neatify/releases
+```
+
+From the release assets, download:
 
 ```text
 Neatify-macOS.dmg
@@ -70,7 +76,7 @@ Windows and Linux installers are planned. For now, the app can be run from sourc
 Clone the repository and enter the project folder:
 
 ```bash
-git clone git@github.com:amm22-lab/neatify.git
+git clone git@github.com:alexprofmutua/neatify.git
 cd neatify
 ```
 
