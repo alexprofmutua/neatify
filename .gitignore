@@ -14,3 +14,4 @@ neatify_rules.json
 build/
 dist/
 *.spec
+assets/*.iconset/

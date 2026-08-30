@@ -5,6 +5,7 @@ from app_settings import load_app_settings, save_app_settings
 from style import APP_STYLE
 from state import AppState
 from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QStackedWidget, QStyle, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 from components import create_folder_button
 from neatify import get_common_folders, open_item, organize_folder, preview_organize_folder, undo_last_move, undo_move_by_id
@@ -22,6 +23,7 @@ class NeatifyWindow(QMainWindow):
         self.folder_buttons = []
         self.center_folder_buttons = []
         self.setWindowTitle("Neatify")
+        self.setWindowIcon(QIcon("assets/temp-logo.svg"))
         self.setStyleSheet(APP_STYLE)
         self.resize(920, 560)
         self.build_interface()

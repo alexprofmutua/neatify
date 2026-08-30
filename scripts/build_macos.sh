@@ -14,4 +14,7 @@ fi
     --name Neatify \
     --windowed \
     --clean \
+    --noconfirm \
+    --icon assets/Neatify.icns \
+    --add-data assets/temp-logo.svg:assets \
     gui.py
