@@ -111,7 +111,7 @@ def open_item(item_path):
     elif os_name == "Windows":
         system.startfile(full_path)
     elif os_name == "Linux":
-        subprocess.run("xdg-open", full_path)
+        subprocess.run(["xdg-open", full_path])
     else:
         print("Error: opening files is not supported on this OS.")
 
@@ -130,8 +130,8 @@ def find_and_open(item_name, search_folder="~"):
 
     number = 1
 
-    for results in results:
-        print(str(number) + ".", results)
+    for result in results:
+        print(str(number) + ".", result)
         number = number + 1
 
 def move_file(full_path, destination, dry_run):
@@ -144,7 +144,7 @@ def move_file(full_path, destination, dry_run):
         write_history("Moved", full_path, destination, move_id)
 
 def create_move_id():
-    return "move_" + datetime.now().strftime("%Y%m%d%H%MS%f")
+    return "move_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
 
 def write_history(action, old_path, new_path, move_id):
     # Gets the current date and time and Formats the date/time into readable text, in that order
@@ -158,7 +158,7 @@ def undo_last_move():
 
     if not paths.exists(history_path):
         print("No history file found.")
-        return
+        return "No history file found."
 
     with open(history_path, "r") as history_file:
         lines = history_file.readlines()
@@ -178,23 +178,24 @@ def undo_last_move():
             undone_move_ids.append(move_id)
             continue
 
-        if " | MOVED | " and move_id not in undone_move_ids:
+        if action == "Moved" and move_id not in undone_move_ids:
             old_path, new_path = paths_part.split(" -> ")
             
             if not paths.exists(new_path):
                 print("Error: moved file does not exist:", new_path)
-                return
+                return "Error: moved file does not exist: " + new_path
 
             if paths.exists(old_path):
                 print("Error: original location already has a file:", old_path)
-                return
+                return "Error: original location already has a file: " + old_path
 
             system.rename(new_path, old_path)
             print("Undone:", new_path, "->", old_path)
             write_history("UNDONE", new_path, old_path, move_id)
-            return
+            return "Undone: " + new_path + " -> " + old_path
 
     print("No move history found.")
+    return "No move history found."
 
 def get_unique_destination(destination):
     if not paths.exists(destination):
