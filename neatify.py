@@ -254,6 +254,8 @@ def organize_common_folders(dry_run=True):
         organize_folder(folder, dry_run)
 
 def organize_folder(folder_path, dry_run=True):
+    from rules import get_category_for_file
+
     # Converts the string into full path
     folder = paths.expanduser(folder_path)
 
@@ -281,9 +283,8 @@ def organize_folder(folder_path, dry_run=True):
         full_path = paths.join(folder, file)
 
         if paths.isfile(full_path):
-            extension = get_extension(file)
-            # Looks for extension in dictionary, if it finds it, use it in category, if not, use "Other"
-            category = extension_categories.get(extension, "Other")
+            # Looks for extension and keyword rules, if it finds one, use it as category, if not, use "Other"
+            category = get_category_for_file(file)
 
             # exist_ok = True, Do not crash if the folder already exists.
             extension_folder = paths.join(folder, category)

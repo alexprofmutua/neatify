@@ -31,6 +31,27 @@ APP_STYLE = """
             padding: 12px;
         }
 
+        QComboBox {
+            background-color: #111211;
+            color: #F6F3ED;
+            border: 1px solid #313330;
+            border-radius: 14px;
+            padding: 10px;
+            min-width: 110px;
+        }
+
+        QComboBox::drop-down {
+            border: none;
+            width: 24px;
+        }
+
+        QComboBox QAbstractItemView {
+            background-color: #20211F;
+            color: #F6F3ED;
+            selection-background-color: #3B3C38;
+            border: 1px solid #40413F;
+        }
+
         QLabel {
             padding: 8px;
         }
@@ -52,6 +73,101 @@ APP_STYLE = """
             font-size: 13px;
             font-weight: 500;
             padding-top: 0px;
+        }
+
+        QWidget#settingsPanel {
+            background-color: #171817;
+        }
+
+        QWidget#historyPanel {
+            background-color: #171817;
+        }
+
+        QLabel#settingsTitle {
+            font-size: 30px;
+            font-weight: 700;
+            padding: 0px;
+        }
+
+        QLabel#settingsSectionTitle {
+            font-size: 22px;
+            font-weight: 700;
+            padding: 0px;
+        }
+
+        QLabel#settingsHelp {
+            color: #AAA9A1;
+            font-size: 14px;
+            padding: 0px;
+        }
+
+        QLabel#settingsMessage {
+            color: #29D85F;
+            font-size: 14px;
+            padding: 0px;
+        }
+
+        QTreeWidget#settingsRulesTable {
+            background-color: transparent;
+            color: #F6F3ED;
+            border: none;
+            padding: 0px;
+            font-size: 15px;
+        }
+
+        QTreeWidget#settingsRulesTable::item {
+            padding: 9px;
+            border-bottom: 1px solid #30312F;
+        }
+
+        QTreeWidget#settingsRulesTable::item:selected {
+            background-color: #3B3C38;
+            color: #FFFFFF;
+        }
+
+        QTreeWidget#settingsRulesTable QHeaderView::section {
+            background-color: transparent;
+            color: #8E9088;
+            border: none;
+            border-bottom: 1px solid #30312F;
+            padding: 6px 8px;
+            font-size: 12px;
+            font-weight: 650;
+            text-transform: uppercase;
+        }
+
+        QStackedWidget#settingsStack {
+            background-color: transparent;
+            border: none;
+        }
+
+        QWidget#settingsPage {
+            background-color: transparent;
+        }
+
+        QPushButton#settingsTabButton {
+            background-color: transparent;
+            color: #AAA9A1;
+            border: none;
+            border-radius: 12px;
+            padding: 12px;
+            font-weight: 650;
+            text-align: left;
+        }
+
+        QPushButton#settingsTabButton:hover {
+            background-color: #252624;
+            color: #F6F3ED;
+        }
+
+        QPushButton#activeSettingsTabButton {
+            background-color: #3B3C38;
+            color: #FFFFFF;
+            border: 1px solid #29D85F;
+            border-radius: 12px;
+            padding: 12px;
+            font-weight: 650;
+            text-align: left;
         }
 
         QLabel#categoryCard {

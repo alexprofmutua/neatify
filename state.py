@@ -7,4 +7,5 @@ class AppState:
         self.selected_folder_name = "Downloads"
         self.selected_folder_path = os.path.expanduser("~/Downloads")
         self.current_view_folder_path = os.path.expanduser("~/Downloads")
+        self.current_arrange_folder_path = os.path.expanduser("~/Downloads")
         self.current_preview = {}
