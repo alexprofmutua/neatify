@@ -10,3 +10,7 @@ neatify_settings.json
 neatify_rules.json
 
 .DS_Store
+
+build/
+dist/
+*.spec
