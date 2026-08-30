@@ -9,3 +9,11 @@
 2026-08-30 17:34:50 | move_20260830173450682411 | Moved | /Users/alexprof/Downloads/Me_at_the_site.jpeg -> /Users/alexprof/Downloads/Images/Me_at_the_site.jpeg
 2026-08-30 17:34:50 | move_20260830173450683177 | Moved | /Users/alexprof/Downloads/Me_at_morning_presentation.jpeg -> /Users/alexprof/Downloads/Images/Me_at_morning_presentation.jpeg
 2026-08-30 17:34:50 | move_20260830173450683582 | Moved | /Users/alexprof/Downloads/Me_at_my_desk.jpeg -> /Users/alexprof/Downloads/Images/Me_at_my_desk.jpeg
+2026-08-30 17:58:17 | move_20260830173450683582 | UNDONE | /Users/alexprof/Downloads/Images/Me_at_my_desk.jpeg -> /Users/alexprof/Downloads/Me_at_my_desk.jpeg
+2026-08-30 17:58:31 | move_20260830175831246963 | Moved | /Users/alexprof/Downloads/Me_at_my_desk.jpeg -> /Users/alexprof/Downloads/Images/Me_at_my_desk.jpeg
+2026-08-30 18:06:46 | move_20260830175831246963 | UNDONE | /Users/alexprof/Downloads/Images/Me_at_my_desk.jpeg -> /Users/alexprof/Downloads/Me_at_my_desk.jpeg
+2026-08-30 18:06:56 | move_20260830173450683177 | UNDONE | /Users/alexprof/Downloads/Images/Me_at_morning_presentation.jpeg -> /Users/alexprof/Downloads/Me_at_morning_presentation.jpeg
+2026-08-30 18:06:59 | move_20260830173450682411 | UNDONE | /Users/alexprof/Downloads/Images/Me_at_the_site.jpeg -> /Users/alexprof/Downloads/Me_at_the_site.jpeg
+2026-08-30 18:08:32 | move_20260830180832951233 | Moved | /Users/alexprof/Downloads/Me_at_the_site.jpeg -> /Users/alexprof/Downloads/Images/Me_at_the_site.jpeg
+2026-08-30 18:08:32 | move_20260830180832952027 | Moved | /Users/alexprof/Downloads/Me_at_morning_presentation.jpeg -> /Users/alexprof/Downloads/Images/Me_at_morning_presentation.jpeg
+2026-08-30 18:08:32 | move_20260830180832952436 | Moved | /Users/alexprof/Downloads/Me_at_my_desk.jpeg -> /Users/alexprof/Downloads/Images/Me_at_my_desk.jpeg

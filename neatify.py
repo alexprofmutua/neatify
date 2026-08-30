@@ -134,11 +134,13 @@ def find_and_open(item_name, search_folder="~"):
         print(str(number) + ".", result)
         number = number + 1
 
-def move_file(full_path, destination, dry_run):
+def move_file(full_path, destination, dry_run, move_id=None):
     if dry_run:
         print("Would move:", full_path, "->", destination)
     else:
-        move_id = create_move_id()
+        if move_id is None:
+            move_id = create_move_id()
+
         system.rename(full_path, destination)
         print("Moved:", full_path, "->", destination)
         write_history("Moved", full_path, destination, move_id)
@@ -179,23 +181,64 @@ def undo_last_move():
             continue
 
         if action == "Moved" and move_id not in undone_move_ids:
-            old_path, new_path = paths_part.split(" -> ")
-            
-            if not paths.exists(new_path):
-                print("Error: moved file does not exist:", new_path)
-                return "Error: moved file does not exist: " + new_path
-
-            if paths.exists(old_path):
-                print("Error: original location already has a file:", old_path)
-                return "Error: original location already has a file: " + old_path
-
-            system.rename(new_path, old_path)
-            print("Undone:", new_path, "->", old_path)
-            write_history("UNDONE", new_path, old_path, move_id)
-            return "Undone: " + new_path + " -> " + old_path
+            return undo_move_by_id(move_id)
 
     print("No move history found.")
     return "No move history found."
+
+def undo_move_by_id(target_move_id):
+    history_path = "neatify_history.txt"
+
+    if not paths.exists(history_path):
+        return "No history file found."
+
+    with open(history_path, "r") as history_file:
+        lines = history_file.readlines()
+
+    moves_to_undo = []
+    undone_move_ids = []
+
+    for line in lines:
+        parts = line.strip().split(" | ")
+
+        if len(parts) != 4:
+            continue
+
+        move_id = parts[1]
+        action = parts[2]
+        paths_part = parts[3]
+
+        if move_id != target_move_id:
+            continue
+
+        if action == "UNDONE":
+            undone_move_ids.append(move_id)
+            continue
+
+        if action == "Moved":
+            moves_to_undo.append(paths_part)
+
+    if target_move_id in undone_move_ids:
+        return "This move has already been undone."
+
+    if len(moves_to_undo) == 0:
+        return "Move not found."
+
+    for move_to_undo in moves_to_undo:
+        old_path, new_path = move_to_undo.split(" -> ")
+
+        if not paths.exists(new_path):
+            return "Error: moved file does not exist: " + new_path
+
+        if paths.exists(old_path):
+            return "Error: original location already has a file: " + old_path
+
+    for move_to_undo in moves_to_undo:
+        old_path, new_path = move_to_undo.split(" -> ")
+        system.rename(new_path, old_path)
+        write_history("UNDONE", new_path, old_path, target_move_id)
+
+    return "Undone " + str(len(moves_to_undo)) + " files."
 
 def get_unique_destination(destination):
     if not paths.exists(destination):
@@ -253,6 +296,31 @@ def organize_common_folders(dry_run=True):
         print("Organizing folder:", folder)
         organize_folder(folder, dry_run)
 
+def preview_organize_folder(folder_path):
+    from rules import get_category_for_file
+
+    folder = paths.expanduser(folder_path)
+    preview_groups = {}
+
+    if not paths.exists(folder):
+        return preview_groups
+
+    if not paths.isdir(folder):
+        return preview_groups
+
+    for file in system.listdir(folder):
+        full_path = paths.join(folder, file)
+
+        if paths.isfile(full_path):
+            category = get_category_for_file(file)
+
+            if category not in preview_groups:
+                preview_groups[category] = []
+
+            preview_groups[category].append(file)
+
+    return preview_groups
+
 def organize_folder(folder_path, dry_run=True):
     from rules import get_category_for_file
 
@@ -272,6 +340,7 @@ def organize_folder(folder_path, dry_run=True):
     moved_count = 0
     hidden_count = 0
     folder_count = 0
+    batch_id = create_move_id()
 
     # Converting the files in folder into full paths
     for file in system.listdir(folder):
@@ -293,7 +362,7 @@ def organize_folder(folder_path, dry_run=True):
             # Creates the final path where the file would go
             destination = paths.join(extension_folder, file)
             unique_destination = get_unique_destination(destination)
-            move_file(full_path, unique_destination, dry_run)
+            move_file(full_path, unique_destination, dry_run, batch_id)
             moved_count = moved_count + 1
         else:
             # If it is not a file, skip it and count as skipped

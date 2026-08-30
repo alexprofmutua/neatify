@@ -1,12 +1,13 @@
 """Builds the window"""
 
 import os   # Imports Python's file and folder tools
+from app_settings import load_app_settings, save_app_settings
 from style import APP_STYLE
 from state import AppState
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QStackedWidget, QStyle, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QStackedWidget, QStyle, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 from components import create_folder_button
-from neatify import get_common_folders, open_item, organize_folder, undo_last_move
+from neatify import get_common_folders, open_item, organize_folder, preview_organize_folder, undo_last_move, undo_move_by_id
 from rules import add_extension_rule, add_keyword_rule, find_with_filters, get_category_for_file, load_rules, remove_extension_rule, remove_keyword_rule
 
 
@@ -15,12 +16,16 @@ class NeatifyWindow(QMainWindow):
         super().__init__()
 
         self.state = AppState()
+        self.app_settings = load_app_settings()
+        self.editing_rule_type = None
+        self.editing_rule_match = None
         self.folder_buttons = []
         self.center_folder_buttons = []
         self.setWindowTitle("Neatify")
         self.setStyleSheet(APP_STYLE)
         self.resize(920, 560)
         self.build_interface()
+        self.apply_theme(self.app_settings["theme"], save_choice=False)
 
     def build_interface(self):
         central_widget = QWidget()
@@ -80,7 +85,7 @@ class NeatifyWindow(QMainWindow):
         self.arrange_button.clicked.connect(self.start_arrange_command)
         self.find_button.clicked.connect(lambda: self.start_command("find "))
         self.open_button.clicked.connect(lambda: self.start_command("open "))
-        self.undo_button.clicked.connect(lambda: self.start_command("undo last move"))
+        self.undo_button.clicked.connect(lambda: self.start_command("undo"))
         self.history_button.clicked.connect(lambda: self.start_command("show history"))
         self.settings_button.clicked.connect(lambda: self.start_command("settings"))
 
@@ -103,9 +108,8 @@ class NeatifyWindow(QMainWindow):
         elif command_text == "open ":
             self.show_browser_view()
             self.show_output("Open", ["Type the file or folder path, then press Enter."])
-        elif command_text == "undo last move":
-            self.show_browser_view()
-            self.undo_last_gui_move()
+        elif command_text == "undo":
+            self.show_undo_page()
         elif command_text == "show history":
             self.show_history()
         elif command_text == "settings":
@@ -254,7 +258,7 @@ class NeatifyWindow(QMainWindow):
         self.output_list.setObjectName("outputList")
         self.output_list.setColumnCount(2)
         self.output_list.setHeaderLabels(["Item", "Details"])
-        self.output_list.setRootIsDecorated(False)
+        self.output_list.setRootIsDecorated(True)
         self.output_list.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.output_list.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.output_list.itemDoubleClicked.connect(self.open_output_item)
@@ -313,10 +317,12 @@ class NeatifyWindow(QMainWindow):
 
         self.customization_tab_button = self.create_settings_tab_button("Customization")
         self.my_rules_tab_button = self.create_settings_tab_button("My Rules")
+        self.search_tab_button = self.create_settings_tab_button("Search")
         self.safety_tab_button = self.create_settings_tab_button("Safety")
 
         self.settings_menu_layout.addWidget(self.customization_tab_button)
         self.settings_menu_layout.addWidget(self.my_rules_tab_button)
+        self.settings_menu_layout.addWidget(self.search_tab_button)
         self.settings_menu_layout.addWidget(self.safety_tab_button)
         self.settings_menu_layout.addStretch()
 
@@ -335,7 +341,8 @@ class NeatifyWindow(QMainWindow):
         customization_help = QLabel("Choose the accent style Neatify uses for important buttons and selected items.")
         customization_help.setObjectName("settingsHelp")
 
-        theme_buttons_layout = QHBoxLayout()
+        theme_buttons_layout = QGridLayout()
+        theme_buttons_layout.setSpacing(10)
         midnight_button = QPushButton("Midnight Green")
         ocean_button = QPushButton("Ocean Blue")
         amber_button = QPushButton("Amber")
@@ -354,12 +361,11 @@ class NeatifyWindow(QMainWindow):
         rose_button.clicked.connect(lambda: self.apply_theme("rose"))
         violet_button.clicked.connect(lambda: self.apply_theme("violet"))
 
-        theme_buttons_layout.addWidget(midnight_button)
-        theme_buttons_layout.addWidget(ocean_button)
-        theme_buttons_layout.addWidget(amber_button)
-        theme_buttons_layout.addWidget(rose_button)
-        theme_buttons_layout.addWidget(violet_button)
-        theme_buttons_layout.addStretch()
+        theme_buttons_layout.addWidget(midnight_button, 0, 0)
+        theme_buttons_layout.addWidget(ocean_button, 0, 1)
+        theme_buttons_layout.addWidget(amber_button, 0, 2)
+        theme_buttons_layout.addWidget(rose_button, 1, 0)
+        theme_buttons_layout.addWidget(violet_button, 1, 1)
 
         self.theme_message_label = QLabel("Current theme: Midnight Green")
         self.theme_message_label.setObjectName("settingsMessage")
@@ -400,11 +406,16 @@ class NeatifyWindow(QMainWindow):
         self.remove_rule_button.setObjectName("secondaryActionButton")
         self.remove_rule_button.clicked.connect(self.remove_selected_rule)
 
+        self.clear_rule_form_button = QPushButton("Clear")
+        self.clear_rule_form_button.setObjectName("secondaryActionButton")
+        self.clear_rule_form_button.clicked.connect(self.clear_rule_form)
+
         rule_form_layout.addWidget(self.rule_type_input)
         rule_form_layout.addWidget(self.rule_match_input)
         rule_form_layout.addWidget(self.rule_category_input)
         rule_form_layout.addWidget(self.add_rule_button)
         rule_form_layout.addWidget(self.remove_rule_button)
+        rule_form_layout.addWidget(self.clear_rule_form_button)
 
         self.settings_message_label = QLabel("")
         self.settings_message_label.setObjectName("settingsMessage")
@@ -417,12 +428,52 @@ class NeatifyWindow(QMainWindow):
         self.settings_rules_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.settings_rules_table.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.settings_rules_table.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.settings_rules_table.itemClicked.connect(self.load_selected_rule_into_form)
 
         my_rules_layout.addWidget(my_rules_title)
         my_rules_layout.addWidget(my_rules_help)
         my_rules_layout.addLayout(rule_form_layout)
         my_rules_layout.addWidget(self.settings_message_label)
         my_rules_layout.addWidget(self.settings_rules_table, 1)
+
+        self.search_page = QWidget()
+        self.search_page.setObjectName("settingsPage")
+        search_layout = QVBoxLayout()
+        search_layout.setSpacing(14)
+        self.search_page.setLayout(search_layout)
+
+        search_title = QLabel("Search")
+        search_title.setObjectName("settingsSectionTitle")
+
+        search_help = QLabel("Choose how Find searches. This affects the Find button and ask commands like find report.")
+        search_help.setObjectName("settingsHelp")
+
+        search_form_layout = QHBoxLayout()
+
+        self.search_type_input = QComboBox()
+        self.search_type_input.addItems(["All", "Files", "Folders", "Documents", "Images", "Videos", "Audio", "Archives", "Code", "pdf", "jpg", "png", "mp4"])
+        self.search_type_input.setCurrentText(self.app_settings["search_type"])
+
+        self.include_subfolders_checkbox = QCheckBox("Include subfolders")
+        self.include_subfolders_checkbox.setChecked(self.app_settings["include_subfolders"])
+
+        self.save_search_settings_button = QPushButton("Save Search Settings")
+        self.save_search_settings_button.setObjectName("primaryCommand")
+        self.save_search_settings_button.clicked.connect(self.save_search_settings)
+
+        search_form_layout.addWidget(self.search_type_input)
+        search_form_layout.addWidget(self.include_subfolders_checkbox)
+        search_form_layout.addWidget(self.save_search_settings_button)
+        search_form_layout.addStretch()
+
+        self.search_message_label = QLabel("")
+        self.search_message_label.setObjectName("settingsMessage")
+
+        search_layout.addWidget(search_title)
+        search_layout.addWidget(search_help)
+        search_layout.addLayout(search_form_layout)
+        search_layout.addWidget(self.search_message_label)
+        search_layout.addStretch()
 
         self.safety_page = QWidget()
         self.safety_page.setObjectName("settingsPage")
@@ -443,6 +494,7 @@ class NeatifyWindow(QMainWindow):
 
         self.settings_stack.addWidget(self.customization_page)
         self.settings_stack.addWidget(self.my_rules_page)
+        self.settings_stack.addWidget(self.search_page)
         self.settings_stack.addWidget(self.safety_page)
 
         self.settings_body_layout.addLayout(self.settings_menu_layout, 1)
@@ -479,18 +531,40 @@ class NeatifyWindow(QMainWindow):
         self.history_help_label = QLabel("Recent move and undo operations.")
         self.history_help_label.setObjectName("settingsHelp")
 
+        history_actions_layout = QHBoxLayout()
+
+        self.open_history_item_button = QPushButton("Open Item")
+        self.open_history_item_button.setObjectName("secondaryActionButton")
+        self.open_history_item_button.clicked.connect(self.open_selected_history_item)
+
+        self.open_history_destination_button = QPushButton("Open Destination")
+        self.open_history_destination_button.setObjectName("secondaryActionButton")
+        self.open_history_destination_button.clicked.connect(self.open_selected_history_destination)
+
+        self.undo_selected_history_button = QPushButton("Undo Selected")
+        self.undo_selected_history_button.setObjectName("primaryCommand")
+        self.undo_selected_history_button.clicked.connect(self.undo_selected_history_move)
+
+        history_actions_layout.addWidget(self.open_history_item_button)
+        history_actions_layout.addWidget(self.open_history_destination_button)
+        history_actions_layout.addWidget(self.undo_selected_history_button)
+        history_actions_layout.addStretch()
+
         self.history_table = QTreeWidget()
         self.history_table.setObjectName("settingsRulesTable")
-        self.history_table.setColumnCount(4)
-        self.history_table.setHeaderLabels(["Time", "Action", "Item", "Destination"])
-        self.history_table.setRootIsDecorated(False)
+        self.history_table.setColumnCount(5)
+        self.history_table.setHeaderLabels(["Time", "Action", "Files", "From", "To"])
+        self.history_table.setRootIsDecorated(True)
+        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.history_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.history_table.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.history_table.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.history_table.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.history_table.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.history_table.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
         self.history_layout.addLayout(history_top_layout)
         self.history_layout.addWidget(self.history_help_label)
+        self.history_layout.addLayout(history_actions_layout)
         self.history_layout.addWidget(self.history_table, 1)
 
         self.main_layout.addWidget(self.history_panel, 1)
@@ -553,26 +627,7 @@ class NeatifyWindow(QMainWindow):
         return counts
 
     def get_preview_groups(self, folder_path):
-        preview_groups = {}
-
-        if not os.path.exists(folder_path):
-            return preview_groups
-
-        if not os.path.isdir(folder_path):
-            return preview_groups
-
-        for item in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, item)
-
-            if os.path.isfile(full_path):
-                category = get_category_for_file(item)
-
-                if category not in preview_groups:
-                    preview_groups[category] = []
-
-                preview_groups[category].append(item)
-
-        return preview_groups
+        return preview_organize_folder(folder_path)
 
     def format_preview_text(self, category_name, files):
         if len(files) == 0:
@@ -595,6 +650,7 @@ class NeatifyWindow(QMainWindow):
         self.output_list.clear()
         self.output_list.setColumnCount(2)
         self.output_list.setHeaderLabels(["Move To", "Files"])
+        self.output_list.setRootIsDecorated(True)
         self.output_list.header().show()
         self.output_list.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.output_list.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -608,10 +664,17 @@ class NeatifyWindow(QMainWindow):
 
         for category_name in preview_groups:
             files = preview_groups[category_name]
-            files_text = self.format_short_file_list(files)
+            files_text = str(len(files)) + " files - expand to view"
             list_item = QTreeWidgetItem([category_name, files_text])
             list_item.setIcon(0, self.get_folder_icon())
             self.output_list.addTopLevelItem(list_item)
+
+            for file_name in files:
+                file_path = os.path.join(folder_path, file_name)
+                file_item = QTreeWidgetItem([file_name, os.path.join(category_name, file_name)])
+                file_item.setIcon(0, self.get_file_icon(file_name))
+                file_item.setData(0, Qt.UserRole, file_path)
+                list_item.addChild(file_item)
 
     def show_arrange_preview(self, folder_path=None):
         if folder_path is None or folder_path == "":
@@ -635,6 +698,7 @@ class NeatifyWindow(QMainWindow):
         self.output_list.clear()
         self.output_list.setColumnCount(1)
         self.output_list.setHeaderLabels(["Message"])
+        self.output_list.setRootIsDecorated(False)
         self.output_list.header().hide()
         self.proceed_button.setVisible(show_proceed)
         self.cancel_preview_button.setVisible(False)
@@ -666,8 +730,8 @@ class NeatifyWindow(QMainWindow):
             self.open_from_command(item_name)
             return
 
-        if lowered_command == "undo last move":
-            self.undo_last_gui_move()
+        if lowered_command == "undo" or lowered_command == "undo last move":
+            self.show_undo_page()
             return
 
         if lowered_command == "show history":
@@ -695,7 +759,12 @@ class NeatifyWindow(QMainWindow):
             self.show_output("Find", ["Type a file or folder name after find."])
             return
 
-        results = find_with_filters(item_name, self.state.selected_folder_path)
+        results = find_with_filters(
+            item_name,
+            self.state.selected_folder_path,
+            self.app_settings["search_type"],
+            self.app_settings["include_subfolders"],
+        )
 
         if len(results) == 0:
             self.show_output("Find results", ["No matching item found."])
@@ -770,7 +839,12 @@ class NeatifyWindow(QMainWindow):
             self.show_output("Open", ["Opened: " + expanded_path])
             return
 
-        results = find_with_filters(item_name, self.state.selected_folder_path)
+        results = find_with_filters(
+            item_name,
+            self.state.selected_folder_path,
+            self.app_settings["search_type"],
+            self.app_settings["include_subfolders"],
+        )
 
         if len(results) == 0:
             self.show_output("Open", ["No matching item found."])
@@ -791,8 +865,10 @@ class NeatifyWindow(QMainWindow):
             button.clicked.connect(lambda: self.show_settings_page(0))
         elif button_text == "My Rules":
             button.clicked.connect(lambda: self.show_settings_page(1))
-        elif button_text == "Safety":
+        elif button_text == "Search":
             button.clicked.connect(lambda: self.show_settings_page(2))
+        elif button_text == "Safety":
+            button.clicked.connect(lambda: self.show_settings_page(3))
 
         return button
 
@@ -802,6 +878,7 @@ class NeatifyWindow(QMainWindow):
         tab_buttons = [
             self.customization_tab_button,
             self.my_rules_tab_button,
+            self.search_tab_button,
             self.safety_tab_button,
         ]
 
@@ -813,7 +890,7 @@ class NeatifyWindow(QMainWindow):
 
             self.refresh_style(button)
 
-    def apply_theme(self, theme_name):
+    def apply_theme(self, theme_name, save_choice=True):
         themes = {
             "midnight": {
                 "name": "Midnight Green",
@@ -922,6 +999,11 @@ class NeatifyWindow(QMainWindow):
         self.theme_message_label.setText("Current theme: " + theme["name"])
 
         self.setStyleSheet(theme_style)
+
+        if save_choice:
+            self.app_settings["theme"] = theme_name
+            save_app_settings(self.app_settings)
+
         self.show_settings_page(self.settings_stack.currentIndex())
 
     def build_theme_style(self, theme):
@@ -969,17 +1051,42 @@ class NeatifyWindow(QMainWindow):
             self.settings_message_label.setText("Type both a match and a folder name.")
             return
 
+        if self.editing_rule_type is not None:
+            if self.editing_rule_type == "Extension":
+                remove_extension_rule(self.editing_rule_match)
+            elif self.editing_rule_type == "Keyword":
+                remove_keyword_rule(self.editing_rule_match)
+
         if rule_type == "Extension":
             add_extension_rule(match_text, category)
-            self.settings_message_label.setText("Added extension rule: " + match_text + " -> " + category)
+            self.settings_message_label.setText("Saved extension rule: " + match_text + " -> " + category)
         else:
             add_keyword_rule(match_text, category)
-            self.settings_message_label.setText("Added keyword rule: " + match_text + " -> " + category)
+            self.settings_message_label.setText("Saved keyword rule: " + match_text + " -> " + category)
 
-        self.rule_match_input.clear()
-        self.rule_category_input.clear()
+        self.clear_rule_form()
         self.populate_settings_table()
         self.refresh_after_rules_change()
+
+    def load_selected_rule_into_form(self, selected_rule, column=0):
+        rule_type = selected_rule.text(0)
+        match_text = selected_rule.text(1)
+        category = selected_rule.text(2)
+
+        self.rule_type_input.setCurrentText(rule_type)
+        self.rule_match_input.setText(match_text)
+        self.rule_category_input.setText(category)
+        self.editing_rule_type = rule_type
+        self.editing_rule_match = match_text
+        self.add_rule_button.setText("Save Rule")
+        self.settings_message_label.setText("Editing rule: " + match_text)
+
+    def clear_rule_form(self):
+        self.rule_match_input.clear()
+        self.rule_category_input.clear()
+        self.editing_rule_type = None
+        self.editing_rule_match = None
+        self.add_rule_button.setText("Add Rule")
 
     def remove_selected_rule(self):
         selected_items = self.settings_rules_table.selectedItems()
@@ -998,8 +1105,15 @@ class NeatifyWindow(QMainWindow):
             remove_keyword_rule(match_text)
 
         self.settings_message_label.setText("Removed rule: " + match_text)
+        self.clear_rule_form()
         self.populate_settings_table()
         self.refresh_after_rules_change()
+
+    def save_search_settings(self):
+        self.app_settings["search_type"] = self.search_type_input.currentText()
+        self.app_settings["include_subfolders"] = self.include_subfolders_checkbox.isChecked()
+        save_app_settings(self.app_settings)
+        self.search_message_label.setText("Search settings saved.")
 
     def show_settings(self):
         self.hide_browser_panels()
@@ -1086,6 +1200,7 @@ class NeatifyWindow(QMainWindow):
         self.output_list.clear()
         self.output_list.setColumnCount(2)
         self.output_list.setHeaderLabels(["Name", "Location"])
+        self.output_list.setRootIsDecorated(False)
         self.output_list.header().show()
         self.output_list.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.output_list.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -1117,38 +1232,213 @@ class NeatifyWindow(QMainWindow):
     def show_history(self):
         self.hide_browser_panels()
         self.settings_panel.hide()
+        self.history_title.setText("History")
+        self.history_help_label.setText("Recent move and undo operations.")
+        self.history_panel.show()
+        self.populate_history_table()
+
+    def show_undo_page(self):
+        self.hide_browser_panels()
+        self.settings_panel.hide()
+        self.history_title.setText("Undo")
+        self.history_help_label.setText("Select a moved row, check From and To, then press Undo Selected.")
         self.history_panel.show()
         self.populate_history_table()
 
     def populate_history_table(self):
-        history_path = "neatify_history.txt"
         self.history_table.clear()
+        batches = self.get_history_batches()
+
+        if len(batches) == 0:
+            self.history_table.addTopLevelItem(QTreeWidgetItem(["", "No history found yet.", "", "", ""]))
+            return
+
+        for batch in batches[:20]:
+            action = "Arrange"
+
+            if batch["undone"]:
+                action = "Undone"
+
+            batch_item = QTreeWidgetItem([
+                batch["time"],
+                action,
+                str(len(batch["moves"])) + " files",
+                batch["from"],
+                batch["to"],
+            ])
+            batch_item.setIcon(2, self.get_folder_icon())
+            batch_item.setData(0, Qt.UserRole, batch)
+            self.history_table.addTopLevelItem(batch_item)
+
+            for move in batch["moves"]:
+                file_item = QTreeWidgetItem([
+                    "",
+                    move["action"],
+                    move["item"],
+                    move["from"],
+                    move["to"],
+                ])
+                file_item.setIcon(2, self.get_path_icon(move["path_for_icon"]))
+                file_item.setData(0, Qt.UserRole, move)
+                batch_item.addChild(file_item)
+
+    def get_history_batches(self):
+        history_path = "neatify_history.txt"
 
         if not os.path.exists(history_path):
-            self.history_table.addTopLevelItem(QTreeWidgetItem(["", "No history found yet.", "", ""]))
-            return
+            return []
 
         with open(history_path, "r") as history_file:
             lines = history_file.readlines()
 
-        if len(lines) == 0:
-            self.history_table.addTopLevelItem(QTreeWidgetItem(["", "No history found yet.", "", ""]))
-            return
+        batches = {}
+        batch_order = []
 
-        for line in reversed(lines[-20:]):
+        for line in lines:
             history_item = self.parse_history_line(line)
 
             if history_item is None:
                 continue
 
-            list_item = QTreeWidgetItem([
-                history_item["time"],
-                history_item["action"],
-                history_item["item"],
-                history_item["destination"],
-            ])
-            list_item.setIcon(2, self.get_path_icon(history_item["path_for_icon"]))
-            self.history_table.addTopLevelItem(list_item)
+            move_id = history_item["move_id"]
+
+            if move_id not in batches:
+                batches[move_id] = {
+                    "move_id": move_id,
+                    "time": history_item["time"],
+                    "from": history_item["from"],
+                    "to": history_item["to"],
+                    "moves": [],
+                    "undone": False,
+                }
+                batch_order.append(move_id)
+
+            if history_item["action"] == "Moved":
+                batches[move_id]["moves"].append(history_item)
+                batches[move_id]["time"] = history_item["time"]
+                batches[move_id]["from"] = history_item["from"]
+                batches[move_id]["to"] = history_item["to"]
+            elif history_item["action"] == "UNDONE":
+                batches[move_id]["undone"] = True
+
+        grouped_batches = []
+
+        for move_id in reversed(batch_order):
+            batch = batches[move_id]
+
+            if len(batch["moves"]) > 0:
+                grouped_batches.append(batch)
+
+        return grouped_batches
+
+    def get_selected_history_item(self):
+        selected_items = self.history_table.selectedItems()
+
+        if len(selected_items) == 0:
+            return None
+
+        return selected_items[0].data(0, Qt.UserRole)
+
+    def get_selected_history_batches(self):
+        selected_items = self.history_table.selectedItems()
+        selected_batches = []
+        selected_move_ids = []
+
+        for selected_item in selected_items:
+            item_data = selected_item.data(0, Qt.UserRole)
+
+            if item_data is None:
+                continue
+
+            if "moves" in item_data:
+                batch = item_data
+            else:
+                parent_item = selected_item.parent()
+
+                if parent_item is None:
+                    continue
+
+                batch = parent_item.data(0, Qt.UserRole)
+
+            if batch["move_id"] not in selected_move_ids:
+                selected_batches.append(batch)
+                selected_move_ids.append(batch["move_id"])
+
+        return selected_batches
+
+    def open_selected_history_item(self):
+        history_item = self.get_selected_history_item()
+
+        if history_item is None:
+            self.history_help_label.setText("Select a history row first.")
+            return
+
+        if "moves" in history_item:
+            if len(history_item["moves"]) == 0:
+                self.history_help_label.setText("This batch has no files to open.")
+                return
+
+            history_item = history_item["moves"][0]
+
+        item_path = history_item["new_path"]
+
+        if history_item["action"] == "UNDONE":
+            item_path = history_item["old_path"]
+
+        open_item(item_path)
+        self.history_help_label.setText("Opened: " + item_path)
+
+    def open_selected_history_destination(self):
+        history_item = self.get_selected_history_item()
+
+        if history_item is None:
+            self.history_help_label.setText("Select a history row first.")
+            return
+
+        if "moves" in history_item:
+            destination_folder = history_item["to"]
+            open_item(destination_folder)
+            self.history_help_label.setText("Opened destination: " + destination_folder)
+            return
+
+        destination_folder = os.path.dirname(history_item["new_path"])
+
+        if history_item["action"] == "UNDONE":
+            destination_folder = os.path.dirname(history_item["old_path"])
+
+        open_item(destination_folder)
+        self.history_help_label.setText("Opened destination: " + destination_folder)
+
+    def undo_selected_history_move(self):
+        selected_batches = self.get_selected_history_batches()
+
+        if len(selected_batches) == 0:
+            self.history_help_label.setText("Select one or more arrange batches first.")
+            return
+
+        undone_count = 0
+        messages = []
+
+        for batch in selected_batches:
+            if batch["undone"]:
+                messages.append("Already undone: " + batch["move_id"])
+                continue
+
+            result = undo_move_by_id(batch["move_id"])
+            messages.append(result)
+
+            if result.startswith("Undone"):
+                undone_count = undone_count + 1
+
+        self.populate_history_table()
+        self.folder_summary_label.setText(self.get_folder_status(self.state.selected_folder_path))
+        self.update_folder_cards()
+        self.update_folder_contents_list(self.state.current_view_folder_path)
+
+        if undone_count == 1:
+            self.history_help_label.setText(messages[0])
+        else:
+            self.history_help_label.setText("Undone " + str(undone_count) + " selected batches.")
 
     def undo_last_gui_move(self):
         result = undo_last_move()
@@ -1164,6 +1454,7 @@ class NeatifyWindow(QMainWindow):
             return None
 
         timestamp = parts[0]
+        move_id = parts[1]
         action = parts[2]
         paths_part = parts[3]
 
@@ -1174,10 +1465,14 @@ class NeatifyWindow(QMainWindow):
 
         return {
             "time": timestamp,
+            "move_id": move_id,
             "action": action,
             "item": os.path.basename(old_path),
-            "destination": os.path.basename(os.path.dirname(new_path)),
+            "from": os.path.dirname(old_path),
+            "to": os.path.dirname(new_path),
             "path_for_icon": new_path,
+            "old_path": old_path,
+            "new_path": new_path,
         }
 
     def get_external_drive_paths(self):

@@ -6,7 +6,7 @@ APP_STYLE = """
         QWidget {
             background-color: #191A19;
             color: #F6F3ED;
-            font-family: "Avenir Next", "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+            font-family: "Avenir Next", "Helvetica Neue", Arial;
             font-size: 16px;
         }
 
@@ -50,6 +50,29 @@ APP_STYLE = """
             color: #F6F3ED;
             selection-background-color: #3B3C38;
             border: 1px solid #40413F;
+        }
+
+        QCheckBox {
+            color: #F6F3ED;
+            spacing: 8px;
+            font-weight: 600;
+        }
+
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+        }
+
+        QCheckBox::indicator:unchecked {
+            background-color: #111211;
+            border: 1px solid #40413F;
+            border-radius: 5px;
+        }
+
+        QCheckBox::indicator:checked {
+            background-color: #29D85F;
+            border: 1px solid #29D85F;
+            border-radius: 5px;
         }
 
         QLabel {
