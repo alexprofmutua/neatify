@@ -133,63 +133,17 @@ Windows and Linux installers are planned. For now, the app can be run from sourc
 
 ## 🧑‍💻 Developer Setup
 
+![Developer Setup](assets/carbon.png)
+
 Clone the repository and enter the project folder:
 
-```bash
-git clone git@github.com:alexprofmutua/neatify.git
-cd neatify
-```
+![Developer Setup](assets/carbon.png)
 
-Create and activate a virtual environment:
-
-```bash
-python3 -m venv neat
-source neat/bin/activate
-```
-
-Install dependencies:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-Run the app:
-
-```bash
-python gui.py
-```
-
-## 🏗️ Build For macOS
+## 🏗️ Build for macOS
 
 Install build dependencies:
 
-```bash
-python -m pip install -r requirements-build.txt
-```
-
-Create or refresh the app icon:
-
-```bash
-python scripts/create_icon.py
-```
-
-Build the `.app` bundle:
-
-```bash
-./scripts/build_macos.sh
-```
-
-Create the `.dmg` installer:
-
-```bash
-hdiutil create -volname Neatify -srcfolder dist/Neatify.app -ov -format UDZO dist/Neatify-macOS.dmg
-```
-
-The installer will be created at:
-
-```text
-dist/Neatify-macOS.dmg
-```
+![Developer Setup](assets/carbon(2).png)
 
 ---
 
