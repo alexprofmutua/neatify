@@ -143,7 +143,7 @@ Clone the repository and enter the project folder:
 
 Install build dependencies:
 
-![Developer Setup](assets/carbon(1).png)
+![Developer Setup](assets/carbon2.png)
 
 ---
 
