@@ -1,10 +1,38 @@
-# Neatify
+![Neatify 🧹](GITHUB_HOSTED_HERO_IMAGE_URL)
+
+<p align="center">
+  <img src="assets/neatify-logo.png" alt="Neatify Logo" width="120">
+</p>
+
+<p align="center">
+  <strong>A safer, smarter way to organize your files.</strong>
+</p>
+
+<p align="center">
+  <em>Clean your folders without losing control of what happens to your files.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/alexprofmutua/neatify/releases">
+    <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
+  </a>
+  &nbsp;
+  <a href="https://github.com/alexprofmutua/neatify/releases">
+    <img src="https://img.shields.io/badge/Releases-View-555555?style=for-the-badge&logo=github&logoColor=white" alt="View Releases">
+  </a>
+</p>
+
+---
+
+## ✨ Neatify
 
 Neatify is a desktop file organizer I built to help people clean messy folders without losing control of their files.
 
 The project started as a Python command-line script and grew into a PySide6 desktop app with folder browsing, arrange previews, custom rules, filtered search, history, undo, themes, and macOS packaging.
 
-## Why I Built It
+![Neatify main interface](GITHUB_HOSTED_SCREENSHOT_URL)
+
+## 💡 Why I Built It
 
 Most file cleanup tools feel risky because they move things immediately and make it hard to understand what changed. Neatify is built around a safer workflow:
 
@@ -14,13 +42,23 @@ choose folder -> preview changes -> proceed or cancel -> record history -> undo 
 
 I designed Neatify around that workflow so file organization feels inspectable and reversible. The project also gave me a practical way to apply software engineering concepts such as filesystem APIs, GUI architecture, state management, persistence, packaging, and defensive file handling.
 
-## Current Status
+## 📌 Current Status
 
 Neatify currently supports macOS development and macOS packaging.
 
 The app can be run from source during development or packaged into a downloadable `.dmg` installer.
 
-## Highlights
+## 🖥️ How It Works
+
+1. **Choose a folder** to organize.
+2. **Preview the arrange** — see exactly what will move, before anything happens.
+3. **Proceed or cancel** the arrange.
+4. **History is recorded** for the batch.
+5. **Undo** it later if needed.
+
+![Preview before organizing](GITHUB_HOSTED_PREVIEW_DEMO_URL)
+
+## 🧩 Highlights
 
 - Finder-style folder browser for common folders.
 - External drive detection on macOS.
@@ -37,7 +75,27 @@ The app can be run from source during development or packaged into a downloadabl
 - Five visual themes stored in user preferences.
 - Packaged macOS `.app` and `.dmg` build flow.
 
-## Installation
+![Custom rules demo](GITHUB_HOSTED_RULES_DEMO_URL)
+
+![Search and filter demo](GITHUB_HOSTED_SEARCH_DEMO_URL)
+
+## 🛡️ Safety Model
+
+Neatify is designed to be conservative with files.
+
+- Files are previewed before being moved.
+- Files are moved, not deleted.
+- Existing destination files are not overwritten.
+- Duplicate names are resolved with unique suffixes.
+- Move history is recorded by batch.
+- Undo checks that files still exist before reversing a move.
+- Settings, rules, and history are stored in the app-data folder rather than inside the installed app bundle.
+
+![History and undo demo](GITHUB_HOSTED_HISTORY_DEMO_URL)
+
+---
+
+## 🚀 Installation
 
 ### macOS
 
@@ -71,7 +129,7 @@ This early build is not code-signed or notarized yet, so macOS may show a securi
 
 Windows and Linux installers are planned. For now, the app can be run from source on those platforms after installing Python and the project dependencies.
 
-## Developer Setup
+## 🧑‍💻 Developer Setup
 
 Clone the repository and enter the project folder:
 
@@ -99,7 +157,7 @@ Run the app:
 python gui.py
 ```
 
-## Build For macOS
+## 🏗️ Build For macOS
 
 Install build dependencies:
 
@@ -131,7 +189,9 @@ The installer will be created at:
 dist/Neatify-macOS.dmg
 ```
 
-## Architecture
+---
+
+## 🧠 Architecture
 
 I separated Neatify into focused modules instead of keeping all logic in one large file.
 
@@ -152,19 +212,7 @@ neatify/
 
 This structure keeps product UI, file-system behavior, rules, settings, and packaging concerns separate enough to evolve independently.
 
-## Safety Model
-
-Neatify is designed to be conservative with files.
-
-- Files are previewed before being moved.
-- Files are moved, not deleted.
-- Existing destination files are not overwritten.
-- Duplicate names are resolved with unique suffixes.
-- Move history is recorded by batch.
-- Undo checks that files still exist before reversing a move.
-- Settings, rules, and history are stored in the app-data folder rather than inside the installed app bundle.
-
-## Engineering Concepts Demonstrated
+## 🛠️ Engineering Concepts Demonstrated
 
 - Python application development
 - Desktop GUI development with PySide6
@@ -179,13 +227,7 @@ Neatify is designed to be conservative with files.
 - Desktop app packaging with PyInstaller
 - macOS DMG distribution workflow
 
-## License
-
-This repository is currently licensed under the MIT License.
-
-Future commercial releases may use a separate proprietary license for distributed builds.
-
-## Roadmap
+## 🗺️ Roadmap
 
 - Add automated tests for organize, preview, rules, search, and undo.
 - Add Windows and Linux packaging.
@@ -194,6 +236,12 @@ Future commercial releases may use a separate proprietary license for distribute
 - Add optional anonymous download or launch analytics.
 - Add AI-assisted commands after user feedback.
 
-## Author
+## 📄 License
+
+This repository is currently licensed under the MIT License.
+
+Future commercial releases may use a separate proprietary license for distributed builds.
+
+## 👨‍💻 Author
 
 Developed by Alex M.
