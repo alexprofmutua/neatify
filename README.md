@@ -133,8 +133,6 @@ Windows and Linux installers are planned. For now, the app can be run from sourc
 
 ## 🧑‍💻 Developer Setup
 
-![Developer Setup](assets/carbon.png)
-
 Clone the repository and enter the project folder:
 
 ![Developer Setup](assets/carbon.png)
