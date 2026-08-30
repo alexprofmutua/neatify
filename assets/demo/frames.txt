@@ -1,0 +1,9 @@
+file '/Users/alexprof/Projects/neatify/assets/screenshots/01-main-window.png'
+duration 2
+file '/Users/alexprof/Projects/neatify/assets/screenshots/02-arrange-preview.png'
+duration 2
+file '/Users/alexprof/Projects/neatify/assets/screenshots/03-after-organize.png'
+duration 2
+file '/Users/alexprof/Projects/neatify/assets/screenshots/04-history.png'
+duration 2
+file '/Users/alexprof/Projects/neatify/assets/screenshots/04-history.png'
