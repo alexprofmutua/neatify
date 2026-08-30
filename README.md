@@ -1,7 +1,7 @@
-![Neatify 🧹](GITHUB_HOSTED_HERO_IMAGE_URL)
+![Neatify 🧹](assets/banner.png)
 
 <p align="center">
-  <img src="assets/neatify-logo.png" alt="Neatify Logo" width="120">
+  <img src="assets/neatify-logo.svg" alt="Neatify Logo" width="120">
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@ Neatify is a desktop file organizer I built to help people clean messy folders w
 
 The project started as a Python command-line script and grew into a PySide6 desktop app with folder browsing, arrange previews, custom rules, filtered search, history, undo, themes, and macOS packaging.
 
-![Neatify main interface](GITHUB_HOSTED_SCREENSHOT_URL)
+![Neatify main interface](assets/screenshots/01-main-window.png)
 
 ## 💡 Why I Built It
 
@@ -56,7 +56,9 @@ The app can be run from source during development or packaged into a downloadabl
 4. **History is recorded** for the batch.
 5. **Undo** it later if needed.
 
-![Preview before organizing](GITHUB_HOSTED_PREVIEW_DEMO_URL)
+![Preview before organizing](assets/screenshots/02-arrange-preview.png)
+
+![After organizing](assets/screenshots/03-after-organize.png)
 
 ## 🧩 Highlights
 
@@ -75,9 +77,9 @@ The app can be run from source during development or packaged into a downloadabl
 - Five visual themes stored in user preferences.
 - Packaged macOS `.app` and `.dmg` build flow.
 
-![Custom rules demo](GITHUB_HOSTED_RULES_DEMO_URL)
+![Custom rules demo](assets/screenshots/custom-rules.png)
 
-![Search and filter demo](GITHUB_HOSTED_SEARCH_DEMO_URL)
+![Theme customization](assets/screenshots/themes.png)
 
 ## 🛡️ Safety Model
 
@@ -91,7 +93,7 @@ Neatify is designed to be conservative with files.
 - Undo checks that files still exist before reversing a move.
 - Settings, rules, and history are stored in the app-data folder rather than inside the installed app bundle.
 
-![History and undo demo](GITHUB_HOSTED_HISTORY_DEMO_URL)
+![History and undo demo](assets/screenshots/04-history.png)
 
 ---
 
