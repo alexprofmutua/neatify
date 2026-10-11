@@ -44,9 +44,9 @@ I designed Neatify around that workflow so file organization feels inspectable a
 
 ## 📌 Current Status
 
-Neatify currently supports macOS development and macOS packaging.
+Neatify currently supports macOS development, macOS packaging, and Windows packaging.
 
-The app can be run from source during development or packaged into a downloadable `.dmg` installer.
+The app can be run from source during development or packaged into downloadable installers for non-technical users.
 
 ## 🖥️ How It Works
 
@@ -127,9 +127,25 @@ This early build is not code-signed or notarized yet, so macOS may show a securi
 4. Choose Open.
 5. Confirm that you want to open it.
 
-### Windows and Linux
+### Windows
 
-Windows and Linux installers are planned. For now, the app can be run from source on those platforms after installing Python and the project dependencies.
+Download the latest release from the GitHub Releases page and choose:
+
+```text
+Neatify-Windows-Setup.exe
+```
+
+Then install:
+
+1. Double-click `Neatify-Windows-Setup.exe`.
+2. Follow the installer prompts.
+3. Open Neatify from the Start menu or desktop shortcut.
+
+If only `Neatify-Windows.zip` is available, unzip it and double-click `Neatify.exe`.
+
+### Linux
+
+Linux installers are planned. For now, the app can be run from source after installing Python and the project dependencies.
 
 ## 🧑‍💻 Developer Setup
 
@@ -142,6 +158,59 @@ Clone the repository and enter the project folder:
 Install build dependencies:
 
 ![Developer Setup](assets/carbon2.png)
+
+Then create the macOS app and installer:
+
+```bash
+cd /Users/alexprof/Projects/_active/neatify
+source neat/bin/activate
+pip install -r requirements-build.txt
+bash scripts/build_macos.sh
+```
+
+Send this file to macOS users:
+
+```text
+release/Neatify-macOS.dmg
+```
+
+## 🏗️ Build for Windows
+
+Build the Windows installer on a Windows computer. A Windows installer should be built on Windows so the app includes the correct Windows executable and libraries.
+
+Install dependencies:
+
+```powershell
+cd C:\path\to\neatify
+python -m venv neat
+.\neat\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r requirements-build.txt
+```
+
+For a proper one-click installer, install Inno Setup first:
+
+```text
+https://jrsoftware.org/isinfo.php
+```
+
+Then build:
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
+Send this file to Windows users:
+
+```text
+release\Neatify-Windows-Setup.exe
+```
+
+If Inno Setup is not installed, the script creates this fallback instead:
+
+```text
+release\Neatify-Windows.zip
+```
 
 ---
 

@@ -11,7 +11,7 @@ from window import NeatifyWindow  # Imports our custom Neatify window
 
 def main():
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon(get_project_path("assets", "temp-logo.svg")))
+    app.setWindowIcon(QIcon(get_project_path("assets", "neatify-logo.svg")))
 
     window = NeatifyWindow()
     window.show()

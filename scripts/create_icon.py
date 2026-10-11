@@ -8,7 +8,7 @@ from PySide6.QtGui import QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
 
-SVG_PATH = "assets/temp-logo.svg"
+SVG_PATH = "assets/neatify-logo.svg"
 ICONSET_PATH = "assets/Neatify.iconset"
 ICNS_PATH = "assets/Neatify.icns"
 

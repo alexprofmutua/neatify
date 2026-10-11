@@ -8,9 +8,12 @@ from app_paths import migrate_local_file
 
 def get_default_settings():
     return {
-        "theme": "midnight",
+        "theme": "finder_light",
         "search_type": "All",
         "include_subfolders": True,
+        "arrangement_structure": "Rule Only",
+        "arrangement_date_source": "Modified Date",
+        "default_theme_version": 2,
     }
 
 
@@ -29,9 +32,18 @@ def load_app_settings():
 
     defaults = get_default_settings()
 
+    migrated_default_theme = False
+
+    if settings.get("default_theme_version") is None and settings.get("theme") == "midnight":
+        settings["theme"] = defaults["theme"]
+        migrated_default_theme = True
+
     for key in defaults:
         if key not in settings:
             settings[key] = defaults[key]
+
+    if migrated_default_theme:
+        save_app_settings(settings)
 
     return settings
 

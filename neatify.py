@@ -253,10 +253,10 @@ def get_unique_destination(destination):
 
     name, extension = paths.splitext(file_name)
 
-    counter = 1
+    counter = 2
 
     while True:
-        new_file_name = name + "_" + str(counter) + extension
+        new_file_name = name + " " + str(counter) + extension
         new_destination = paths.join(folder, new_file_name)
 
         if not paths.exists(new_destination):

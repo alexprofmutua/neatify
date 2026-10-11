@@ -16,5 +16,19 @@ fi
     --clean \
     --noconfirm \
     --icon assets/Neatify.icns \
-    --add-data assets/temp-logo.svg:assets \
+    --add-data assets:assets \
     gui.py
+
+rm -rf build/dmg
+mkdir -p build/dmg release
+cp -R dist/Neatify.app build/dmg/
+ln -s /Applications build/dmg/Applications
+
+hdiutil create \
+    -volname "Neatify" \
+    -srcfolder build/dmg \
+    -ov \
+    -format UDZO \
+    release/Neatify-macOS.dmg
+
+echo "Created release/Neatify-macOS.dmg"

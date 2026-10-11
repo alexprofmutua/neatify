@@ -11,6 +11,7 @@ def get_default_rules():
     return {
         "extensions": extension_categories.copy(),
         "keywords": {},
+        "keyword_rules": [],
     }
 
 
@@ -33,6 +34,19 @@ def load_rules():
     if "keywords" not in rules:
         rules["keywords"] = {}
 
+    if "keyword_rules" not in rules:
+        rules["keyword_rules"] = []
+
+    for keyword in rules["keywords"]:
+        existing_rule = find_keyword_rule(rules["keyword_rules"], keyword, "")
+
+        if existing_rule is None:
+            rules["keyword_rules"].append({
+                "keyword": keyword,
+                "destination": rules["keywords"][keyword],
+                "scope": "",
+            })
+
     return rules
 
 
@@ -44,16 +58,88 @@ def save_rules(rules):
 
 
 def get_category_for_file(file_name):
+    return get_arrangement_for_file(file_name)["destination"]
+
+
+def get_arrangement_for_file(file_name, folder_path=""):
     rules = load_rules()
     lowered_file_name = file_name.lower()
+    normalized_folder_path = normalize_scope_path(folder_path)
+
+    folder_rules = []
+    global_rules = []
+
+    for rule in rules["keyword_rules"]:
+        keyword = rule.get("keyword", "")
+        scope = normalize_scope_path(rule.get("scope", ""))
+
+        if keyword == "":
+            continue
+
+        if keyword.lower() not in lowered_file_name:
+            continue
+
+        if scope != "" and scope == normalized_folder_path:
+            folder_rules.append(rule)
+        elif scope == "":
+            global_rules.append(rule)
+
+    for rule in folder_rules + global_rules:
+        return {
+            "destination": clean_destination_folder(rule.get("destination", "Other")),
+            "reason": "Keyword: " + rule.get("keyword", ""),
+        }
 
     for keyword in rules["keywords"]:
         if keyword.lower() in lowered_file_name:
-            return rules["keywords"][keyword]
+            return {
+                "destination": clean_destination_folder(rules["keywords"][keyword]),
+                "reason": "Keyword: " + keyword,
+            }
 
     extension = get_extension_from_file_name(file_name)
 
-    return rules["extensions"].get(extension, "Other")
+    destination = rules["extensions"].get(extension, "Other")
+
+    return {
+        "destination": clean_destination_folder(destination),
+        "reason": "Extension: " + extension,
+    }
+
+
+def find_keyword_rule(keyword_rules, keyword, scope):
+    clean_keyword = keyword.lower()
+    clean_scope = normalize_scope_path(scope)
+
+    for rule in keyword_rules:
+        if rule.get("keyword", "").lower() == clean_keyword and normalize_scope_path(rule.get("scope", "")) == clean_scope:
+            return rule
+
+    return None
+
+
+def normalize_scope_path(scope):
+    if scope == "":
+        return ""
+
+    return os.path.abspath(os.path.expanduser(scope))
+
+
+def clean_destination_folder(destination):
+    clean_parts = []
+
+    for part in destination.replace("\\", "/").split("/"):
+        clean_part = part.strip()
+
+        if clean_part in ["", ".", ".."]:
+            continue
+
+        clean_parts.append(clean_part)
+
+    if len(clean_parts) == 0:
+        return "Other"
+
+    return os.path.join(*clean_parts)
 
 
 def get_extension_from_file_name(file_name):
@@ -71,9 +157,26 @@ def add_extension_rule(extension, category):
     save_rules(rules)
 
 
-def add_keyword_rule(keyword, category):
+def add_keyword_rule(keyword, category, scope=""):
     rules = load_rules()
-    rules["keywords"][keyword.lower()] = category
+    clean_keyword = keyword.lower()
+    clean_scope = normalize_scope_path(scope)
+    clean_destination = clean_destination_folder(category)
+
+    if clean_scope == "":
+        rules["keywords"][clean_keyword] = clean_destination
+
+    existing_rule = find_keyword_rule(rules["keyword_rules"], clean_keyword, clean_scope)
+
+    if existing_rule is None:
+        rules["keyword_rules"].append({
+            "keyword": clean_keyword,
+            "destination": clean_destination,
+            "scope": clean_scope,
+        })
+    else:
+        existing_rule["destination"] = clean_destination
+
     save_rules(rules)
 
 
@@ -87,12 +190,27 @@ def remove_extension_rule(extension):
     save_rules(rules)
 
 
-def remove_keyword_rule(keyword):
+def remove_keyword_rule(keyword, scope=None):
     rules = load_rules()
     clean_keyword = keyword.lower()
 
-    if clean_keyword in rules["keywords"]:
+    if scope is None and clean_keyword in rules["keywords"]:
         del rules["keywords"][clean_keyword]
+
+    if scope is None:
+        rules["keyword_rules"] = [
+            rule for rule in rules["keyword_rules"]
+            if rule.get("keyword", "").lower() != clean_keyword
+        ]
+    else:
+        clean_scope = normalize_scope_path(scope)
+        rules["keyword_rules"] = [
+            rule for rule in rules["keyword_rules"]
+            if not (
+                rule.get("keyword", "").lower() == clean_keyword
+                and normalize_scope_path(rule.get("scope", "")) == clean_scope
+            )
+        ]
 
     save_rules(rules)
 
