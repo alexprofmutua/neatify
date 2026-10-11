@@ -1,184 +1,148 @@
-![Neatify 🧹](assets/banner.png)
+![Neatify](assets/banner.png)
 
 <p align="center">
-  <img src="assets/neatify-logo.svg" alt="Neatify Logo" width="120">
+  <img src="assets/neatify-logo.svg" alt="Neatify Logo" width="110">
 </p>
 
 <p align="center">
-  <strong>A safer, smarter way to organize your files.</strong>
-</p>
-
-<p align="center">
-  <em>Clean your folders without losing control of what happens to your files.</em>
+  <strong>A safer way to organize messy folders.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/alexprofmutua/neatify/releases">
-    <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
-  </a>
-  &nbsp;
-  <a href="https://github.com/alexprofmutua/neatify/releases">
-    <img src="https://img.shields.io/badge/Releases-View-555555?style=for-the-badge&logo=github&logoColor=white" alt="View Releases">
+    <img src="https://img.shields.io/badge/Download-Releases-111111?style=for-the-badge&logo=github&logoColor=white" alt="Download Neatify">
   </a>
 </p>
 
 ---
 
-## ✨ Neatify
+## For Normal Users
 
-Neatify is a desktop file organizer I built to help people clean messy folders without losing control of their files.
-
-The project started as a Python command-line script and grew into a PySide6 desktop app with folder browsing, arrange previews, custom rules, filtered search, history, undo, themes, and macOS packaging.
+Neatify helps you organize files without losing control. It shows a preview before moving anything, handles duplicate names safely, keeps history, and lets you undo previous arrange batches.
 
 ![Neatify main interface](assets/screenshots/01-main-window.png)
 
-## 💡 Why I Built It
+### Install
 
-Most file cleanup tools feel risky because they move things immediately and make it hard to understand what changed. Neatify is built around a safer workflow:
+**macOS**
 
-```text
-choose folder -> preview changes -> proceed or cancel -> record history -> undo if needed
-```
+1. Download `Neatify-macOS.dmg` from the Releases page.
+2. Open the `.dmg`.
+3. Drag `Neatify.app` into Applications.
+4. Open Neatify from Applications.
 
-I designed Neatify around that workflow so file organization feels inspectable and reversible. The project also gave me a practical way to apply software engineering concepts such as filesystem APIs, GUI architecture, state management, persistence, packaging, and defensive file handling.
+If macOS blocks the app because it is not notarized yet, right-click `Neatify.app`, choose **Open**, then confirm.
 
-## 📌 Current Status
+**Windows**
 
-Neatify currently supports macOS development, macOS packaging, and Windows packaging.
+1. Download `Neatify-Windows-Setup.exe` from the Releases page.
+2. Double-click it.
+3. Follow the installer.
+4. Open Neatify from the Start menu or desktop shortcut.
 
-The app can be run from source during development or packaged into downloadable installers for non-technical users.
+If you receive `Neatify-Windows.zip` instead, unzip it and double-click `Neatify.exe`.
 
-## 🖥️ How It Works
+### Use
 
-1. **Choose a folder** to organize.
-2. **Preview the arrange** — see exactly what will move, before anything happens.
-3. **Proceed or cancel** the arrange.
-4. **History is recorded** for the batch.
-5. **Undo** it later if needed.
+1. Choose a folder from the sidebar.
+2. Press **Arrange**.
+3. Review the preview.
+4. Press **Confirm Arrange** only when it looks right.
+5. Use **History** if you need to review, export, or undo a batch.
 
-![Preview before organizing](assets/screenshots/02-arrange-preview.png)
+![Arrange preview](assets/screenshots/02-arrange-preview.png)
 
-![After organizing](assets/screenshots/03-after-organize.png)
+### Find Files
 
-## 🧩 Highlights
+Press **Find**, type what you want to search for, then press Enter.
 
-- Finder-style folder browser for common folders.
-- External drive detection on macOS.
-- Live file and folder listing for the selected location.
-- Arrange preview before any file is moved.
-- Category-based organization for documents, images, videos, audio, archives, code, spreadsheets, presentations, and uncategorized files.
-- Custom extension rules, such as `pdf -> Documents`.
-- Custom keyword rules, such as `econ -> Economics`.
-- Filtered search across files, folders, extensions, and categories.
-- Open selected files or folders directly from the app.
-- Move history grouped by arrange batch.
-- Multi-select undo for previous arrange batches.
-- Duplicate-safe renaming to avoid overwriting files.
-- Five visual themes stored in user preferences.
-- Packaged macOS `.app` and `.dmg` build flow.
+![Find results](assets/screenshots/03-find-results.png)
 
-![Custom rules demo](assets/screenshots/custom-rules.png)
+### Rules
 
-![Theme customization](assets/screenshots/themes.png)
+Open **Settings > My Rules** to teach Neatify where files should go.
 
-## 🛡️ Safety Model
+Examples:
 
-Neatify is designed to be conservative with files.
+- `pdf -> Documents`
+- `economics -> Econ`
+- `invoice -> Finance/Invoices`
 
-- Files are previewed before being moved.
-- Files are moved, not deleted.
-- Existing destination files are not overwritten.
-- Duplicate names are resolved with unique suffixes.
-- Move history is recorded by batch.
-- Undo checks that files still exist before reversing a move.
-- Settings, rules, and history are stored in the app-data folder rather than inside the installed app bundle.
+You can also choose year and month sorting for larger folders.
 
-![History and undo demo](assets/screenshots/04-history.png)
+![Custom rules](assets/screenshots/05-custom-rules.png)
+
+### Safety
+
+- Neatify previews before moving files.
+- It moves files, not deletes them.
+- It renames duplicates instead of overwriting.
+- It records arrange history.
+- It supports undo from History.
 
 ---
 
-## 🚀 Installation
+## For Programmers
 
-### macOS
+Neatify is a Python/PySide6 desktop app.
 
-Download the latest release from the GitHub Releases page:
-
-```text
-https://github.com/alexprofmutua/neatify/releases
-```
-
-From the release assets, download:
+### Project Structure
 
 ```text
-Neatify-macOS.dmg
+neatify/
+  gui.py              # App entry point
+  window.py           # Main PySide6 window and UI behavior
+  style.py            # App styling
+  components.py       # Reusable UI helpers
+  state.py            # Runtime state
+  neatify.py          # File moves, history, undo
+  rules.py            # Rules and search
+  app_settings.py     # Saved preferences
+  app_paths.py        # Asset and user-data paths
+  assets/             # Logo, screenshots, icons
+  scripts/            # Build scripts
 ```
 
-Then install:
-
-1. Double-click `Neatify-macOS.dmg`.
-2. Drag `Neatify.app` into the Applications folder.
-3. Open Neatify from Applications.
-
-This early build is not code-signed or notarized yet, so macOS may show a security warning the first time the app opens. If that happens:
-
-1. Open Finder.
-2. Go to Applications.
-3. Right-click `Neatify.app`.
-4. Choose Open.
-5. Confirm that you want to open it.
-
-### Windows
-
-Download the latest release from the GitHub Releases page and choose:
-
-```text
-Neatify-Windows-Setup.exe
-```
-
-Then install:
-
-1. Double-click `Neatify-Windows-Setup.exe`.
-2. Follow the installer prompts.
-3. Open Neatify from the Start menu or desktop shortcut.
-
-If only `Neatify-Windows.zip` is available, unzip it and double-click `Neatify.exe`.
-
-### Linux
-
-Linux installers are planned. For now, the app can be run from source after installing Python and the project dependencies.
-
-## 🧑‍💻 Developer Setup
-
-Clone the repository and enter the project folder:
-
-![Developer Setup](assets/carbon.png)
-
-## 🏗️ Build for macOS
-
-Install build dependencies:
-
-![Developer Setup](assets/carbon2.png)
-
-Then create the macOS app and installer:
+### Run From Source
 
 ```bash
-cd /Users/alexprof/Projects/_active/neatify
+cd /path/to/neatify
+python3 -m venv neat
+source neat/bin/activate
+pip install -r requirements.txt
+python gui.py
+```
+
+On Windows:
+
+```powershell
+cd C:\path\to\neatify
+python -m venv neat
+.\neat\Scripts\Activate.ps1
+pip install -r requirements.txt
+python gui.py
+```
+
+### Build macOS Installer
+
+Build on macOS:
+
+```bash
+cd /path/to/neatify
 source neat/bin/activate
 pip install -r requirements-build.txt
 bash scripts/build_macos.sh
 ```
 
-Send this file to macOS users:
+Output:
 
 ```text
 release/Neatify-macOS.dmg
 ```
 
-## 🏗️ Build for Windows
+### Build Windows Installer
 
-Build the Windows installer on a Windows computer. A Windows installer should be built on Windows so the app includes the correct Windows executable and libraries.
-
-Install dependencies:
+Build on Windows:
 
 ```powershell
 cd C:\path\to\neatify
@@ -186,85 +150,37 @@ python -m venv neat
 .\neat\Scripts\Activate.ps1
 pip install -r requirements.txt
 pip install -r requirements-build.txt
+.\scripts\build_windows.ps1
 ```
 
-For a proper one-click installer, install Inno Setup first:
+For a one-click installer, install Inno Setup first:
 
 ```text
 https://jrsoftware.org/isinfo.php
 ```
 
-Then build:
-
-```powershell
-.\scripts\build_windows.ps1
-```
-
-Send this file to Windows users:
+Output:
 
 ```text
 release\Neatify-Windows-Setup.exe
 ```
 
-If Inno Setup is not installed, the script creates this fallback instead:
+Without Inno Setup, the script creates:
 
 ```text
 release\Neatify-Windows.zip
 ```
 
----
+### Notes
 
-## 🧠 Architecture
+- Settings, rules, and history are saved in the user's app-data folder.
+- macOS and Windows builds should be created on their own operating systems.
+- The current app is not code-signed or notarized yet.
 
-I separated Neatify into focused modules instead of keeping all logic in one large file.
+## License
 
-```text
-neatify/
-  gui.py                    # Application entry point
-  window.py                 # Main PySide6 window and UI behavior
-  style.py                  # Application stylesheet and visual system
-  components.py             # Reusable UI helper functions
-  state.py                  # Runtime app state
-  neatify.py                # Core file operations, history, and undo
-  rules.py                  # Custom rules and filtered search
-  app_settings.py           # Theme/search preference persistence
-  app_paths.py              # Asset paths and per-user data paths
-  assets/                   # Logo and icon assets
-  scripts/                  # Build automation scripts
-```
+MIT License.
 
-This structure keeps product UI, file-system behavior, rules, settings, and packaging concerns separate enough to evolve independently.
-
-## 🛠️ Engineering Concepts Demonstrated
-
-- Python application development
-- Desktop GUI development with PySide6
-- Event-driven programming
-- Object-oriented design with shared application state
-- File-system traversal and path handling
-- Rule-based classification
-- Search and filtering
-- JSON persistence
-- Undo/history design
-- Defensive programming around operating-system behavior
-- Desktop app packaging with PyInstaller
-- macOS DMG distribution workflow
-
-## 🗺️ Roadmap
-
-- Add automated tests for organize, preview, rules, search, and undo.
-- Add Windows and Linux packaging.
-- Improve public installer polish with code signing and notarization.
-- Add a first-run onboarding screen.
-- Add optional anonymous download or launch analytics.
-- Add AI-assisted commands after user feedback.
-
-## 📄 License
-
-This repository is currently licensed under the MIT License.
-
-Future commercial releases may use a separate proprietary license for distributed builds.
-
-## 👨‍💻 Author
+## Author
 
 Developed by Alex M.

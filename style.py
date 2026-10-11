@@ -562,6 +562,16 @@ APP_STYLE = """
             font-size: 13px;
         }
 
+        QTextEdit#helpText {
+            background-color: #111211;
+            color: #F6F3ED;
+            border: 1px solid #30312F;
+            border-radius: 10px;
+            padding: 18px;
+            font-size: 15px;
+            line-height: 1.45;
+        }
+
         QPdfView#previewPdf {
             background-color: #111211;
             border: 1px solid #30312F;

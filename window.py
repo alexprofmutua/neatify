@@ -35,6 +35,7 @@ class NeatifyWindow(QMainWindow):
         self.folder_buttons = []
         self.folder_button_paths = {}
         self.folder_back_stack = []
+        self.help_dialog = None
         self.setWindowTitle("Neatify")
         self.setWindowIcon(QIcon(get_project_path("assets", "neatify-logo.svg")))
         self.setStyleSheet(APP_STYLE)
@@ -987,18 +988,89 @@ class NeatifyWindow(QMainWindow):
 
     def show_help(self):
         self.clear_active_command_button()
-        self.clear_active_folder_button()
         self.set_active_sidebar_footer_button(self.sidebar_help_button)
         self.clear_search_bar()
-        self.show_browser_view()
-        self.show_output("Help", [
-            "Choose a folder on the left, then press Arrange to preview where files will go.",
-            "Review the preview carefully. Nothing moves until you press Confirm Arrange.",
-            "Select a file and press Space to preview it inside Neatify.",
-            "Use Find to search the current folder. Use History to review, export, or undo arrange batches.",
-            "Rules: open Settings, then My Rules. Add extension rules like pdf -> Documents or keyword rules like economics -> Econ.",
-            "Rules can also use nested folders like invoice -> Finance/Invoices, and you can choose year/month sorting in Arrangement Structure.",
-        ])
+
+        if self.help_dialog is not None and self.help_dialog.isVisible():
+            self.help_dialog.raise_()
+            self.help_dialog.activateWindow()
+            return
+
+        self.help_dialog = QDialog(self)
+        self.help_dialog.setWindowTitle("Neatify Help")
+        self.help_dialog.setObjectName("previewDialog")
+        self.help_dialog.resize(820, 680)
+        self.help_dialog.setMinimumSize(680, 520)
+        self.help_dialog.setModal(False)
+        self.help_dialog.finished.connect(lambda result: self.clear_active_sidebar_footer_button())
+
+        help_layout = QVBoxLayout()
+        help_layout.setContentsMargins(22, 22, 22, 22)
+        help_layout.setSpacing(12)
+        self.help_dialog.setLayout(help_layout)
+
+        title_label = QLabel("How to Use Neatify")
+        title_label.setObjectName("previewDialogTitle")
+
+        subtitle_label = QLabel("Keep this window open while you practice in the app.")
+        subtitle_label.setObjectName("previewDialogPath")
+
+        help_text = QTextEdit()
+        help_text.setObjectName("helpText")
+        help_text.setReadOnly(True)
+        help_text.setHtml(self.get_help_html())
+
+        button_layout = QHBoxLayout()
+        close_button = QPushButton("Close")
+        close_button.setObjectName("primaryCommand")
+        close_button.clicked.connect(self.help_dialog.close)
+
+        button_layout.addStretch()
+        button_layout.addWidget(close_button)
+
+        help_layout.addWidget(title_label)
+        help_layout.addWidget(subtitle_label)
+        help_layout.addWidget(help_text, 1)
+        help_layout.addLayout(button_layout)
+
+        self.help_dialog.show()
+
+    def get_help_html(self):
+        return """
+        <h2>Basic workflow</h2>
+        <ol>
+            <li>Choose a folder from the left sidebar.</li>
+            <li>Press <b>Arrange</b> to preview where files will go.</li>
+            <li>Read the preview. Nothing moves yet.</li>
+            <li>Press <b>Confirm Arrange</b> only when the preview looks right.</li>
+            <li>Use <b>History</b> if you need to review, export, or undo a batch.</li>
+        </ol>
+
+        <h2>Preview files</h2>
+        <p>Select a file in the list, then press <b>Space</b>. Neatify previews supported files in front of the app.</p>
+
+        <h2>Search</h2>
+        <p>Press <b>Find</b>, type what you want to find, then press Enter. Search settings can be changed in <b>Settings &gt; Search</b>.</p>
+
+        <h2>Rules</h2>
+        <p>Open <b>Settings &gt; My Rules</b> to teach Neatify where files should go.</p>
+        <ul>
+            <li><b>Extension rule:</b> <code>pdf</code> to <code>Documents</code></li>
+            <li><b>Keyword rule:</b> <code>economics</code> to <code>Econ</code></li>
+            <li><b>Nested folder:</b> <code>invoice</code> to <code>Finance/Invoices</code></li>
+        </ul>
+
+        <h2>Year and month sorting</h2>
+        <p>In <b>Settings &gt; My Rules</b>, use <b>Arrangement Structure</b> to choose rule-only sorting, year-first sorting, or year/month folders.</p>
+
+        <h2>Safety</h2>
+        <ul>
+            <li>Neatify previews before moving files.</li>
+            <li>It renames duplicates instead of overwriting them.</li>
+            <li>It records history for each arrange batch.</li>
+            <li>You can undo previous arrange batches from History.</li>
+        </ul>
+        """
 
     def process_ask_command(self):
         command = self.ask_input.text().strip()
