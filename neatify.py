@@ -6,6 +6,7 @@ import subprocess
 # Imports Python's date/time tools
 from datetime import datetime
 from app_paths import migrate_local_file
+from journal import append_move_state, create_operation_id, get_journal_path, read_journal_records
 
 # Shortcuts
 system = os
@@ -27,13 +28,14 @@ extension_categories = {
     "gif": "Images",
     "webp": "Images",
     "svg": "Images",
+    "heic": "Images",
 
     "pdf": "Documents",
     "doc": "Documents",
     "docx": "Documents",
     "txt": "Documents",
     "rtf": "Documents",
-    "odt": "Documents",
+    "md": "Documents",
 
     "xls": "Spreadsheets",
     "xlsx": "Spreadsheets",
@@ -46,10 +48,10 @@ extension_categories = {
     "mov": "Videos",
     "avi": "Videos",
     "mkv": "Videos",
+    "webm": "Videos",
 
     "mp3": "Audio",
     "wav": "Audio",
-    "aac": "Audio",
     "m4a": "Audio",
 
     "zip": "Archives",
@@ -57,6 +59,7 @@ extension_categories = {
     "7z": "Archives",
     "tar": "Archives",
     "gz": "Archives",
+    "dmg": "Archives",
 
     "py": "Code",
     "js": "Code",
@@ -65,6 +68,11 @@ extension_categories = {
     "java": "Code",
     "cpp": "Code",
     "c": "Code",
+    "json": "Code",
+
+    "exe": "Installers",
+    "msi": "Installers",
+    "pkg": "Installers",
 }
 
 def get_extension(file_name):
@@ -142,9 +150,18 @@ def move_file(full_path, destination, dry_run, move_id=None):
         if move_id is None:
             move_id = create_move_id()
 
+        operation_id = create_operation_id()
+
+        if paths.exists(destination):
+            raise FileExistsError("Destination already exists: " + destination)
+
+        append_move_state(operation_id, move_id, full_path, destination, "planned")
+        append_move_state(operation_id, move_id, full_path, destination, "moving")
         system.rename(full_path, destination)
+        append_move_state(operation_id, move_id, full_path, destination, "moved")
         print("Moved:", full_path, "->", destination)
         write_history("Moved", full_path, destination, move_id)
+        append_move_state(operation_id, move_id, full_path, destination, "history_committed")
 
 def create_move_id():
     return "move_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
@@ -153,32 +170,117 @@ def write_history(action, old_path, new_path, move_id):
     # Gets the current date and time and Formats the date/time into readable text, in that order
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Opens the history file in append mode and closes it afterwards.
-    with open(get_history_path(), "a", encoding="utf-8") as history_file:
-        history_file.write(timestamp + " | " + move_id + " | " + action + " | " + old_path + " -> " + new_path + "\n")
+    history_record = {
+        "version": 1,
+        "time": timestamp,
+        "move_id": move_id,
+        "action": action,
+        "old_path": old_path,
+        "new_path": new_path,
+    }
+
+    import json
+
+    history_path = get_history_path()
+    history_folder = paths.dirname(history_path)
+    system.makedirs(history_folder, exist_ok=True)
+
+    with open(history_path, "a", encoding="utf-8") as history_file:
+        history_file.write(json.dumps(history_record, sort_keys=True, ensure_ascii=False) + "\n")
+        history_file.flush()
+        system.fsync(history_file.fileno())
+
+def parse_history_line(line):
+    import json
+
+    stripped_line = line.strip()
+
+    if stripped_line == "":
+        return None
+
+    if stripped_line.startswith("{"):
+        try:
+            history_record = json.loads(stripped_line)
+        except json.JSONDecodeError:
+            return None
+
+        required_keys = ["time", "move_id", "action", "old_path", "new_path"]
+
+        for key in required_keys:
+            if key not in history_record:
+                return None
+
+        return {
+            "time": history_record["time"],
+            "move_id": history_record["move_id"],
+            "action": history_record["action"],
+            "item": paths.basename(history_record["old_path"]),
+            "from": paths.dirname(history_record["old_path"]),
+            "to": paths.dirname(history_record["new_path"]),
+            "path_for_icon": history_record["new_path"],
+            "old_path": history_record["old_path"],
+            "new_path": history_record["new_path"],
+        }
+
+    parts = stripped_line.split(" | ", 3)
+
+    if len(parts) != 4:
+        return None
+
+    timestamp = parts[0]
+    move_id = parts[1]
+    action = parts[2]
+    paths_part = parts[3]
+
+    if paths_part.count(" -> ") != 1:
+        return None
+
+    old_path, new_path = paths_part.split(" -> ", 1)
+
+    return {
+        "time": timestamp,
+        "move_id": move_id,
+        "action": action,
+        "item": paths.basename(old_path),
+        "from": paths.dirname(old_path),
+        "to": paths.dirname(new_path),
+        "path_for_icon": new_path,
+        "old_path": old_path,
+        "new_path": new_path,
+    }
+
+def read_history_items():
+    history_path = get_history_path()
+
+    if not paths.exists(history_path):
+        return []
+
+    history_items = []
+
+    with open(history_path, "r", encoding="utf-8") as history_file:
+        for line in history_file:
+            history_item = parse_history_line(line)
+
+            if history_item is not None:
+                history_items.append(history_item)
+
+    return history_items
 
 def get_history_path():
     return migrate_local_file("neatify_history.txt")
 
 def undo_last_move():
-    history_path = get_history_path()
+    history_items = read_history_items()
 
-    if not paths.exists(history_path):
+    if len(history_items) == 0:
         print("No history file found.")
         return "No history file found."
 
-    with open(history_path, "r", encoding="utf-8") as history_file:
-        lines = history_file.readlines()
-
     undone_move_ids = []
 
-    for line in reversed(lines):
-        parts = line.strip().split(" | ")
-
-        if len(parts) != 4:
-            continue
-        move_id = parts[1]
-        action = parts[2]
-        paths_part = parts[3]
+    for history_item in reversed(history_items):
+        move_id = history_item["move_id"]
+        action = history_item["action"]
 
         if action == "UNDONE":
             undone_move_ids.append(move_id)
@@ -191,26 +293,17 @@ def undo_last_move():
     return "No move history found."
 
 def undo_move_by_id(target_move_id):
-    history_path = get_history_path()
+    history_items = read_history_items()
 
-    if not paths.exists(history_path):
+    if len(history_items) == 0:
         return "No history file found."
-
-    with open(history_path, "r", encoding="utf-8") as history_file:
-        lines = history_file.readlines()
 
     moves_to_undo = []
     undone_move_ids = []
 
-    for line in lines:
-        parts = line.strip().split(" | ")
-
-        if len(parts) != 4:
-            continue
-
-        move_id = parts[1]
-        action = parts[2]
-        paths_part = parts[3]
+    for history_item in history_items:
+        move_id = history_item["move_id"]
+        action = history_item["action"]
 
         if move_id != target_move_id:
             continue
@@ -220,7 +313,7 @@ def undo_move_by_id(target_move_id):
             continue
 
         if action == "Moved":
-            moves_to_undo.append(paths_part)
+            moves_to_undo.append(history_item)
 
     if target_move_id in undone_move_ids:
         return "This move has already been undone."
@@ -229,7 +322,8 @@ def undo_move_by_id(target_move_id):
         return "Move not found."
 
     for move_to_undo in moves_to_undo:
-        old_path, new_path = move_to_undo.split(" -> ")
+        old_path = move_to_undo["old_path"]
+        new_path = move_to_undo["new_path"]
 
         if not paths.exists(new_path):
             return "Error: moved file does not exist: " + new_path
@@ -238,11 +332,101 @@ def undo_move_by_id(target_move_id):
             return "Error: original location already has a file: " + old_path
 
     for move_to_undo in moves_to_undo:
-        old_path, new_path = move_to_undo.split(" -> ")
+        old_path = move_to_undo["old_path"]
+        new_path = move_to_undo["new_path"]
+        operation_id = create_operation_id()
+        append_move_state(operation_id, target_move_id, new_path, old_path, "undo_planned")
+        append_move_state(operation_id, target_move_id, new_path, old_path, "undo_moving")
         system.rename(new_path, old_path)
+        append_move_state(operation_id, target_move_id, new_path, old_path, "undo_moved")
         write_history("UNDONE", new_path, old_path, target_move_id)
+        append_move_state(operation_id, target_move_id, new_path, old_path, "undo_history_committed")
 
     return "Undone " + str(len(moves_to_undo)) + " files."
+
+def recover_incomplete_operations():
+    recovered_count = 0
+    conflict_count = 0
+    operations = {}
+
+    for record in read_journal_records():
+        operation_id = record.get("operation_id")
+
+        if operation_id is None:
+            continue
+
+        operations.setdefault(operation_id, []).append(record)
+
+    completed_states = [
+        "history_committed",
+        "failed",
+        "recovered_no_move",
+        "recovery_conflict",
+        "undo_history_committed",
+        "undo_failed",
+    ]
+
+    for operation_id in operations:
+        records = operations[operation_id]
+        latest_record = records[-1]
+        latest_state = latest_record.get("state")
+
+        if latest_state in completed_states:
+            continue
+
+        batch_id = latest_record.get("batch_id")
+        source_path = latest_record.get("source_path")
+        destination_path = latest_record.get("destination_path")
+
+        if source_path is None or destination_path is None:
+            continue
+
+        source_exists = paths.exists(source_path)
+        destination_exists = paths.exists(destination_path)
+
+        if latest_state in ["planned", "moving"]:
+            if destination_exists and not source_exists:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "moved")
+                write_history("Moved", source_path, destination_path, batch_id)
+                append_move_state(operation_id, batch_id, source_path, destination_path, "history_committed")
+                recovered_count = recovered_count + 1
+            elif source_exists and not destination_exists:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "recovered_no_move")
+            else:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "recovery_conflict")
+                conflict_count = conflict_count + 1
+        elif latest_state == "moved":
+            if destination_exists and not source_exists:
+                write_history("Moved", source_path, destination_path, batch_id)
+                append_move_state(operation_id, batch_id, source_path, destination_path, "history_committed")
+                recovered_count = recovered_count + 1
+            else:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "recovery_conflict")
+                conflict_count = conflict_count + 1
+        elif latest_state in ["undo_planned", "undo_moving"]:
+            if destination_exists and not source_exists:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "undo_moved")
+                write_history("UNDONE", source_path, destination_path, batch_id)
+                append_move_state(operation_id, batch_id, source_path, destination_path, "undo_history_committed")
+                recovered_count = recovered_count + 1
+            elif source_exists and not destination_exists:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "recovered_no_move")
+            else:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "recovery_conflict")
+                conflict_count = conflict_count + 1
+        elif latest_state == "undo_moved":
+            if destination_exists and not source_exists:
+                write_history("UNDONE", source_path, destination_path, batch_id)
+                append_move_state(operation_id, batch_id, source_path, destination_path, "undo_history_committed")
+                recovered_count = recovered_count + 1
+            else:
+                append_move_state(operation_id, batch_id, source_path, destination_path, "recovery_conflict")
+                conflict_count = conflict_count + 1
+
+    return {
+        "recovered": recovered_count,
+        "conflicts": conflict_count,
+    }
 
 def get_unique_destination(destination):
     if not paths.exists(destination):
@@ -263,6 +447,57 @@ def get_unique_destination(destination):
             return new_destination
 
         counter = counter + 1
+
+
+def get_folder_name_set(folder):
+    names = set()
+
+    try:
+        with system.scandir(folder) as entries:
+            for entry in entries:
+                names.add(entry.name)
+    except FileNotFoundError:
+        return names
+    except OSError:
+        return names
+
+    return names
+
+
+def get_unique_destination_with_name_cache(destination, taken_names_by_folder):
+    folder = paths.dirname(destination)
+    file_name = paths.basename(destination)
+
+    if folder not in taken_names_by_folder:
+        taken_names_by_folder[folder] = get_folder_name_set(folder)
+
+    taken_names = taken_names_by_folder[folder]
+
+    if file_name not in taken_names:
+        taken_names.add(file_name)
+        return destination
+
+    name, extension = paths.splitext(file_name)
+    counter = 2
+
+    while True:
+        new_file_name = name + " " + str(counter) + extension
+
+        if new_file_name not in taken_names:
+            taken_names.add(new_file_name)
+            return paths.join(folder, new_file_name)
+
+        counter = counter + 1
+
+
+def is_safe_destination(base_folder, destination):
+    base_path = paths.realpath(paths.expanduser(base_folder))
+    destination_path = paths.realpath(paths.expanduser(destination))
+
+    try:
+        return paths.commonpath([base_path, destination_path]) == base_path
+    except ValueError:
+        return False
 
 
 def get_common_folder_names():
@@ -301,10 +536,11 @@ def organize_common_folders(dry_run=True):
         organize_folder(folder, dry_run)
 
 def preview_organize_folder(folder_path):
-    from rules import get_category_for_file
+    from rules import get_arrangement_for_file_with_rules, load_rules
 
     folder = paths.expanduser(folder_path)
     preview_groups = {}
+    rules = load_rules()
 
     if not paths.exists(folder):
         return preview_groups
@@ -312,11 +548,17 @@ def preview_organize_folder(folder_path):
     if not paths.isdir(folder):
         return preview_groups
 
-    for file in system.listdir(folder):
-        full_path = paths.join(folder, file)
+    for entry in sorted(system.scandir(folder), key=lambda item: item.name.lower()):
+        file = entry.name
+        full_path = entry.path
 
-        if paths.isfile(full_path):
-            category = get_category_for_file(file)
+        try:
+            is_file = entry.is_file(follow_symlinks=False)
+        except OSError:
+            continue
+
+        if is_file:
+            category = get_arrangement_for_file_with_rules(file, folder, rules)["destination"]
 
             if category not in preview_groups:
                 preview_groups[category] = []
@@ -326,7 +568,7 @@ def preview_organize_folder(folder_path):
     return preview_groups
 
 def organize_folder(folder_path, dry_run=True):
-    from rules import get_category_for_file
+    from rules import get_arrangement_for_file_with_rules, load_rules
 
     # Converts the string into full path
     folder = paths.expanduser(folder_path)
@@ -345,19 +587,37 @@ def organize_folder(folder_path, dry_run=True):
     hidden_count = 0
     folder_count = 0
     batch_id = create_move_id()
+    rules = load_rules()
+    taken_names_by_folder = {}
+
+    try:
+        folder_entries = sorted(system.scandir(folder), key=lambda item: item.name.lower())
+    except PermissionError as error:
+        print("Error: cannot read folder:", error)
+        return
+    except OSError as error:
+        print("Error: cannot scan folder:", error)
+        return
 
     # Converting the files in folder into full paths
-    for file in system.listdir(folder):
+    for entry in folder_entries:
+        file = entry.name
         # Skips hidden files
         if file[:1] == ".":
             hidden_count = hidden_count + 1
             continue
 
-        full_path = paths.join(folder, file)
+        full_path = entry.path
 
-        if paths.isfile(full_path):
+        try:
+            is_file = entry.is_file(follow_symlinks=False)
+        except OSError:
+            folder_count = folder_count + 1
+            continue
+
+        if is_file:
             # Looks for extension and keyword rules, if it finds one, use it as category, if not, use "Other"
-            category = get_category_for_file(file)
+            category = get_arrangement_for_file_with_rules(file, folder, rules)["destination"]
 
             # exist_ok = True, Do not crash if the folder already exists.
             extension_folder = paths.join(folder, category)
@@ -365,9 +625,13 @@ def organize_folder(folder_path, dry_run=True):
             system.makedirs(extension_folder, exist_ok=True)
             # Creates the final path where the file would go
             destination = paths.join(extension_folder, file)
-            unique_destination = get_unique_destination(destination)
-            move_file(full_path, unique_destination, dry_run, batch_id)
-            moved_count = moved_count + 1
+            unique_destination = get_unique_destination_with_name_cache(destination, taken_names_by_folder)
+
+            if not is_safe_destination(folder, unique_destination):
+                print("Skipped unsafe destination:", unique_destination)
+            else:
+                move_file(full_path, unique_destination, dry_run, batch_id)
+                moved_count = moved_count + 1
         else:
             # If it is not a file, skip it and count as skipped
             folder_count = folder_count + 1

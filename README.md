@@ -62,6 +62,19 @@ Press **Find**, type what you want to search for, then press Enter.
 
 Open **Settings > My Rules** to teach Neatify where files should go.
 
+By default, Neatify uses a small set of sensible rules:
+
+- Images: `jpg`, `jpeg`, `png`, `gif`, `webp`, `svg`, `heic`
+- Documents: `pdf`, `doc`, `docx`, `txt`, `rtf`, `md`
+- Spreadsheets: `xls`, `xlsx`, `csv`
+- Presentations: `ppt`, `pptx`
+- Videos: `mp4`, `mov`, `avi`, `mkv`, `webm`
+- Audio: `mp3`, `wav`, `m4a`
+- Archives: `zip`, `rar`, `7z`, `tar`, `gz`, `dmg`
+- Code: `py`, `js`, `html`, `css`, `java`, `cpp`, `c`, `json`
+- Installers: `exe`, `msi`, `pkg`
+- Everything else goes to `Other`
+
 Examples:
 
 - `pdf -> Documents`

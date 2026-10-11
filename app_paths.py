@@ -18,6 +18,12 @@ def get_project_path(*path_parts):
 
 
 def get_user_data_folder():
+    override_folder = os.environ.get("NEATIFY_DATA_DIR")
+
+    if override_folder:
+        os.makedirs(override_folder, exist_ok=True)
+        return override_folder
+
     home = os.path.expanduser("~")
 
     if sys.platform == "darwin":

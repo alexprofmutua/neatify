@@ -7,11 +7,23 @@ from app_paths import migrate_local_file
 from neatify import extension_categories
 
 
+DEFAULT_EXTENSION_VERSION = 3
+
+DEFAULT_EXTENSION_UPDATES = {
+    "xls": "Spreadsheets",
+    "xlsx": "Spreadsheets",
+    "csv": "Spreadsheets",
+    "ppt": "Presentations",
+    "pptx": "Presentations",
+}
+
+
 def get_default_rules():
     return {
         "extensions": extension_categories.copy(),
         "keywords": {},
         "keyword_rules": [],
+        "default_extension_version": DEFAULT_EXTENSION_VERSION,
     }
 
 
@@ -28,8 +40,27 @@ def load_rules():
     with open(rules_file_path, "r", encoding="utf-8") as rules_file:
         rules = json.load(rules_file)
 
+    rules_changed = False
+
     if "extensions" not in rules:
         rules["extensions"] = extension_categories.copy()
+        rules["default_extension_version"] = DEFAULT_EXTENSION_VERSION
+        rules_changed = True
+    else:
+        default_extension_version = rules.get("default_extension_version", 1)
+
+        if default_extension_version < DEFAULT_EXTENSION_VERSION:
+            for extension in extension_categories:
+                if extension not in rules["extensions"]:
+                    rules["extensions"][extension] = extension_categories[extension]
+
+            if default_extension_version < 3:
+                for extension in DEFAULT_EXTENSION_UPDATES:
+                    if rules["extensions"].get(extension) == "Documents":
+                        rules["extensions"][extension] = DEFAULT_EXTENSION_UPDATES[extension]
+
+            rules["default_extension_version"] = DEFAULT_EXTENSION_VERSION
+            rules_changed = True
 
     if "keywords" not in rules:
         rules["keywords"] = {}
@@ -46,6 +77,13 @@ def load_rules():
                 "destination": rules["keywords"][keyword],
                 "scope": "",
             })
+            rules_changed = True
+
+    if rules_changed:
+        try:
+            save_rules(rules)
+        except OSError:
+            pass
 
     return rules
 
@@ -63,6 +101,10 @@ def get_category_for_file(file_name):
 
 def get_arrangement_for_file(file_name, folder_path=""):
     rules = load_rules()
+    return get_arrangement_for_file_with_rules(file_name, folder_path, rules)
+
+
+def get_arrangement_for_file_with_rules(file_name, folder_path, rules):
     lowered_file_name = file_name.lower()
     normalized_folder_path = normalize_scope_path(folder_path)
 

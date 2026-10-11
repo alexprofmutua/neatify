@@ -12,8 +12,8 @@ from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QStyle, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 from components import create_folder_button
-from neatify import create_move_id, get_common_folders, get_history_path, get_unique_destination, move_file, open_item, preview_organize_folder, undo_last_move, undo_move_by_id
-from rules import add_extension_rule, add_keyword_rule, find_with_filters, get_arrangement_for_file, get_category_for_file, load_rules, remove_extension_rule, remove_keyword_rule
+from neatify import create_move_id, get_common_folders, get_history_path, get_unique_destination_with_name_cache, move_file, open_item, parse_history_line, preview_organize_folder, undo_last_move, undo_move_by_id
+from rules import add_extension_rule, add_keyword_rule, find_with_filters, get_arrangement_for_file, get_arrangement_for_file_with_rules, get_category_for_file, load_rules, remove_extension_rule, remove_keyword_rule
 
 try:
     from PySide6.QtPdf import QPdfDocument
@@ -601,18 +601,19 @@ class NeatifyWindow(QMainWindow):
         my_rules_title = QLabel("My Rules")
         my_rules_title.setObjectName("settingsSectionTitle")
 
-        my_rules_help = QLabel("Create rules like pdf -> Documents, keyword rules like econ -> Economics, or nested folders like invoice -> Finance/Invoices.")
+        my_rules_help = QLabel("Create simple rules for file types or words in file names.")
         my_rules_help.setObjectName("settingsHelp")
 
         rule_form_layout = QHBoxLayout()
         self.rule_type_input = QComboBox()
         self.rule_type_input.addItems(["Extension", "Keyword"])
+        self.rule_type_input.currentTextChanged.connect(self.update_rule_form_placeholders)
 
         self.rule_match_input = QLineEdit()
-        self.rule_match_input.setPlaceholderText("pdf or econ")
+        self.rule_match_input.setPlaceholderText("pdf")
 
         self.rule_category_input = QLineEdit()
-        self.rule_category_input.setPlaceholderText("Documents, Econ, or Finance/Invoices")
+        self.rule_category_input.setPlaceholderText("Documents")
 
         self.rule_scope_input = QComboBox()
         self.rule_scope_input.addItems(["Everywhere", "This folder only"])
@@ -636,6 +637,13 @@ class NeatifyWindow(QMainWindow):
         rule_form_layout.addWidget(self.add_rule_button)
         rule_form_layout.addWidget(self.remove_rule_button)
         rule_form_layout.addWidget(self.clear_rule_form_button)
+
+        self.rule_helper_label = QLabel("")
+        self.rule_helper_label.setObjectName("settingsHelp")
+        self.update_rule_form_placeholders()
+
+        self.rule_priority_label = QLabel("Priority: folder keywords, global keywords, extensions, then Other.")
+        self.rule_priority_label.setObjectName("settingsHelp")
 
         self.settings_message_label = QLabel("")
         self.settings_message_label.setObjectName("settingsMessage")
@@ -678,6 +686,8 @@ class NeatifyWindow(QMainWindow):
         my_rules_layout.addWidget(my_rules_title)
         my_rules_layout.addWidget(my_rules_help)
         my_rules_layout.addLayout(rule_form_layout)
+        my_rules_layout.addWidget(self.rule_helper_label)
+        my_rules_layout.addWidget(self.rule_priority_label)
         my_rules_layout.addWidget(self.settings_message_label)
         my_rules_layout.addWidget(self.settings_rules_table, 1)
         my_rules_layout.addWidget(structure_title)
@@ -1461,6 +1471,10 @@ class NeatifyWindow(QMainWindow):
             self.settings_message_label.setText("Type both a match and a folder name.")
             return
 
+        if rule_type == "Keyword" and self.keyword_looks_like_extension(match_text):
+            self.settings_message_label.setText("That looks like a file type. Choose Extension for " + match_text.replace(".", "") + ".")
+            return
+
         if self.editing_rule_type is not None:
             if self.editing_rule_type == "Extension":
                 remove_extension_rule(self.editing_rule_match)
@@ -1482,6 +1496,28 @@ class NeatifyWindow(QMainWindow):
         self.clear_rule_form()
         self.populate_settings_table()
         self.refresh_after_rules_change()
+
+    def keyword_looks_like_extension(self, match_text):
+        clean_match = match_text.lower().replace(".", "")
+
+        if clean_match in ["", "invoice", "resume"]:
+            return False
+
+        if clean_match in ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "mp4", "mov", "mp3", "zip", "csv", "ppt", "pptx", "py", "js"]:
+            return True
+
+        return False
+
+    def update_rule_form_placeholders(self):
+        if self.rule_type_input.currentText() == "Keyword":
+            self.rule_match_input.setPlaceholderText("invoice")
+            self.rule_category_input.setPlaceholderText("Receipts")
+            self.rule_helper_label.setText("Matches file names, e.g. invoice")
+            return
+
+        self.rule_match_input.setPlaceholderText("pdf")
+        self.rule_category_input.setPlaceholderText("Documents")
+        self.rule_helper_label.setText("File type, e.g. pdf")
 
     def load_selected_rule_into_form(self, selected_rule, column=0):
         rule_type = selected_rule.text(0)
@@ -1732,6 +1768,7 @@ class NeatifyWindow(QMainWindow):
         batch_id = create_move_id()
         moved_count = 0
         errors = []
+        taken_names_by_folder = {}
 
         for move in checked_moves:
             old_path = move["old_path"]
@@ -1745,7 +1782,12 @@ class NeatifyWindow(QMainWindow):
 
             try:
                 os.makedirs(destination_folder, exist_ok=True)
-                safe_destination = get_unique_destination(new_path)
+                safe_destination = get_unique_destination_with_name_cache(new_path, taken_names_by_folder)
+
+                if not self.is_safe_arrange_destination(folder_path, safe_destination):
+                    errors.append("Unsafe destination: " + safe_destination)
+                    continue
+
                 move_file(old_path, safe_destination, dry_run=False, move_id=batch_id)
                 moved_count = moved_count + 1
             except OSError as error:
@@ -1770,6 +1812,15 @@ class NeatifyWindow(QMainWindow):
                 lines.append("+" + str(len(errors) - 8) + " more errors")
 
         self.show_output("Done", lines)
+
+    def is_safe_arrange_destination(self, base_folder, destination):
+        base_path = os.path.realpath(os.path.expanduser(base_folder))
+        destination_path = os.path.realpath(os.path.expanduser(destination))
+
+        try:
+            return os.path.commonpath([base_path, destination_path]) == base_path
+        except ValueError:
+            return False
 
     def cancel_preview(self):
         self.state.current_preview = {}
@@ -2205,32 +2256,7 @@ class NeatifyWindow(QMainWindow):
                 export_file.write("\n")
 
     def parse_history_line(self, line):
-        parts = line.strip().split(" | ")
-
-        if len(parts) != 4:
-            return None
-
-        timestamp = parts[0]
-        move_id = parts[1]
-        action = parts[2]
-        paths_part = parts[3]
-
-        if " -> " not in paths_part:
-            return None
-
-        old_path, new_path = paths_part.split(" -> ")
-
-        return {
-            "time": timestamp,
-            "move_id": move_id,
-            "action": action,
-            "item": os.path.basename(old_path),
-            "from": os.path.dirname(old_path),
-            "to": os.path.dirname(new_path),
-            "path_for_icon": new_path,
-            "old_path": old_path,
-            "new_path": new_path,
-        }
+        return parse_history_line(line)
 
     def get_external_drive_paths(self):
         drive_paths = []
@@ -2555,9 +2581,11 @@ class NeatifyWindow(QMainWindow):
         moves = []
         destination_counts = {}
         skipped_count = 0
+        rules = load_rules()
+        taken_names_by_folder = {}
 
         try:
-            folder_items = sorted(os.listdir(folder_path), key=str.lower)
+            folder_entries = sorted(os.scandir(folder_path), key=lambda entry: entry.name.lower())
         except PermissionError:
             return {
                 "folder_path": folder_path,
@@ -2575,22 +2603,29 @@ class NeatifyWindow(QMainWindow):
                 "skipped_count": 1,
             }
 
-        for item in folder_items:
-            full_path = os.path.join(folder_path, item)
+        for entry in folder_entries:
+            item = entry.name
+            full_path = entry.path
 
             if item[:1] == ".":
                 skipped_count = skipped_count + 1
                 continue
 
-            if not os.path.isfile(full_path):
+            try:
+                is_file = entry.is_file(follow_symlinks=False)
+            except OSError:
                 skipped_count = skipped_count + 1
                 continue
 
-            arrangement = get_arrangement_for_file(item, folder_path)
+            if not is_file:
+                skipped_count = skipped_count + 1
+                continue
+
+            arrangement = get_arrangement_for_file_with_rules(item, folder_path, rules)
             category = arrangement["destination"]
             destination_folder = self.build_arrange_destination_folder(folder_path, category, full_path)
             destination = os.path.join(destination_folder, item)
-            unique_destination = get_unique_destination(destination)
+            unique_destination = get_unique_destination_with_name_cache(destination, taken_names_by_folder)
             destination_name = os.path.basename(unique_destination)
             status = "Move"
 
