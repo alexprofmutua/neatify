@@ -21,6 +21,20 @@ New-Item -ItemType Directory -Force -Path "release" | Out-Null
 
 $InnoCompiler = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
 
+if ($null -eq $InnoCompiler) {
+    $CommonInnoPaths = @(
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+    )
+
+    foreach ($InnoPath in $CommonInnoPaths) {
+        if (Test-Path $InnoPath) {
+            $InnoCompiler = @{ Source = $InnoPath }
+            break
+        }
+    }
+}
+
 if ($null -ne $InnoCompiler) {
     & $InnoCompiler.Source "scripts\Neatify.iss"
     Write-Host "Created release\Neatify-Windows-Setup.exe"
