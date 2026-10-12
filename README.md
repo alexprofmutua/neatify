@@ -90,7 +90,7 @@ You can also choose year and month sorting for larger folders.
 - Neatify previews before moving files.
 - It moves files, not deletes them.
 - It renames duplicates instead of overwriting.
-- It records arrange history.
+- It records arrange history in SQLite.
 - It supports undo from History.
 
 ---
@@ -183,6 +183,16 @@ Without Inno Setup, the script creates:
 ```text
 release\Neatify-Windows.zip
 ```
+
+### Release Checklist
+
+Before uploading a release:
+
+1. Run the test suite with `python -m pytest`.
+2. Run `python scripts/benchmark_speed.py` and keep the result for release notes.
+3. Build macOS on macOS and Windows on Windows.
+4. Open the built app and test Arrange, Find, History, Undo, Settings, and custom rules.
+5. Upload the installer from the `release/` folder to GitHub Releases.
 
 ### Notes
 

@@ -97,47 +97,68 @@ def fsync_directory(folder_path):
 
 
 def append_journal_record(record):
+    return append_journal_records([record])[0]
+
+
+def append_journal_records(records):
     journal_path = get_journal_path()
     journal_folder = os.path.dirname(journal_path)
     os.makedirs(journal_folder, exist_ok=True)
 
-    clean_record = {
-        "journal_version": JOURNAL_VERSION,
-        "timestamp": timestamp_now(),
-    }
-    clean_record.update(record)
+    clean_records = []
+    encoded_records = []
 
-    encoded_record = json.dumps(clean_record, sort_keys=True, ensure_ascii=False) + "\n"
+    for record in records:
+        clean_record = {
+            "journal_version": JOURNAL_VERSION,
+            "timestamp": timestamp_now(),
+        }
+        clean_record.update(record)
+        clean_records.append(clean_record)
+        encoded_records.append(json.dumps(clean_record, sort_keys=True, ensure_ascii=False) + "\n")
 
     with JournalLock(journal_path):
         file_already_exists = os.path.exists(journal_path)
 
         with open(journal_path, "a", encoding="utf-8") as journal_file:
-            journal_file.write(encoded_record)
+            journal_file.writelines(encoded_records)
             journal_file.flush()
             os.fsync(journal_file.fileno())
 
         if not file_already_exists:
             fsync_directory(journal_folder)
 
-    return clean_record
+    return clean_records
 
 
-def append_move_state(operation_id, batch_id, source_path, destination_path, state, extra=None):
-    record = {
+def create_move_state_record(operation_id, batch_id, source_path, destination_path, state, extra=None, include_metadata=True):
+    move_record = {
         "operation_id": operation_id,
         "batch_id": batch_id,
         "source_path": source_path,
         "destination_path": destination_path,
         "state": state,
-        "source_metadata": get_path_metadata(source_path),
-        "destination_metadata": get_path_metadata(destination_path),
     }
 
-    if extra is not None:
-        record["extra"] = extra
+    if include_metadata:
+        move_record["source_metadata"] = get_path_metadata(source_path)
+        move_record["destination_metadata"] = get_path_metadata(destination_path)
 
-    return append_journal_record(record)
+    if extra is not None:
+        move_record["extra"] = extra
+
+    return move_record
+
+
+def append_move_state(operation_id, batch_id, source_path, destination_path, state, extra=None):
+    return append_journal_record(create_move_state_record(operation_id, batch_id, source_path, destination_path, state, extra))
+
+
+def append_move_states(move_state_records):
+    if len(move_state_records) == 0:
+        return []
+
+    return append_journal_records(move_state_records)
 
 
 def read_journal_records():

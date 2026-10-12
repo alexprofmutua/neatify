@@ -52,4 +52,18 @@ tests/benchmarks/results/baseline_local.json
 
 Benchmark numbers depend on hardware, operating system, filesystem, current machine load, and whether the filesystem cache is warm or cold. Treat them as local baselines, not universal product claims.
 
-The Phase 2 benchmark compares raw `os.rename` execution with journaled `neatify.move_file` execution. Journaled execution is expected to be slower because it performs durable JSONL writes and `fsync()` calls around each filesystem mutation.
+The Phase 2 benchmark compares raw `os.rename` execution with durable execution. Single-file journaled execution is expected to be slower because it performs durable JSONL writes and `fsync()` calls around each filesystem mutation. The GUI arrange path uses SQLite-backed `move_files_batch()` to keep write-ahead safety while reducing repeated journal locks and flushes.
+
+To measure the current GUI engine on macOS, Windows, or Linux, run:
+
+```bash
+python scripts/benchmark_speed.py
+```
+
+On Windows PowerShell:
+
+```powershell
+python scripts\benchmark_speed.py
+```
+
+This speed benchmark also creates temporary files only. It measures scan time, planning time, SQLite-backed arrange time, find time, and peak memory for 100, 1,000, and 10,000 entries. Results are written to `tests/benchmarks/results/speed_<platform>.json`.

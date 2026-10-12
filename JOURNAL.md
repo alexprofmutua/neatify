@@ -1,25 +1,26 @@
 # Neatify Operation Journal
 
-Neatify uses a versioned JSONL write-ahead journal for filesystem mutations.
+Neatify uses SQLite as the source of truth for move history, undo status, and high-volume batch arrange operations. The JSONL journal remains a crash-recovery safety log.
 
-## Why JSONL
+## Why SQLite
 
-JSONL is append-only, human-readable, easy to test, and simple enough for the current local desktop app. SQLite would provide stronger built-in transactions and locking, but it adds more design surface area. Neatify can move to SQLite later if enterprise features, indexing, or higher write throughput require it.
+SQLite gives Neatify durable local transactions, fast history queries, and much better throughput for large arrange batches. Settings and user rules remain JSON because they are small preference files.
 
-## Journal Records
+## SQLite Records
 
-Each journal line is one JSON object with:
+SQLite stores:
 
-- `journal_version`
-- `timestamp`
-- `operation_id`
-- `batch_id`
-- `source_path`
-- `destination_path`
-- `state`
-- source and destination metadata
+- `batches`: one arrange batch, its action, status, and timestamps.
+- `operations`: one planned file move with operation ID, batch ID, old path, new path, state, and error information.
+- `legacy_imports`: a marker that an old text-history file has already been imported.
 
-Malformed or truncated records are ignored safely during reads and surfaced as `malformed_record` entries.
+The JSONL journal still exists for crash recovery and compatibility with older interrupted operations. Malformed or truncated JSONL records are ignored safely during reads and surfaced as `malformed_record` entries.
+
+## Legacy History Import
+
+Older versions of Neatify wrote move history to `neatify_history.txt`. Current History reads from SQLite only.
+
+On first History read, Neatify imports valid text-history records into SQLite and records the source file in `legacy_imports`. The old text file remains on disk as a backup, but it is not used as a live History source after import.
 
 ## Operation States
 
@@ -49,22 +50,35 @@ Before a filesystem mutation, Neatify appends intent to the journal, flushes Pyt
 
 On POSIX systems, when a journal file or lock file is newly created, Neatify also attempts to `fsync()` the parent directory. Windows directory synchronization is platform-dependent and currently treated as a limitation.
 
-The basic order is:
+The single-file CLI order is:
 
 ```text
+SQLite plan transaction
 planned -> fsync
 moving -> fsync
 rename
 moved -> fsync
-history write -> fsync
+SQLite result transaction
 history_committed -> fsync
 ```
 
 This favors crash recovery over throughput.
 
+The GUI arrange flow uses a faster SQLite batch-safe order:
+
+```text
+SQLite batch plan transaction
+rename files
+SQLite batch result transaction
+```
+
+The batch path still records intent before any file moves. If Neatify stops halfway through the rename loop, recovery compares each planned source and destination path with the real filesystem and marks completed moves safely.
+
 ## Recovery
 
 Recovery is idempotent. Running recovery multiple times should not duplicate moves, overwrite files, or corrupt history.
+
+SQLite-owned operations are recovered through SQLite. JSONL recovery is used only for older operations that do not exist in SQLite, which prevents the same interrupted move from being counted twice.
 
 Recovery checks the real filesystem:
 
@@ -86,4 +100,4 @@ Remaining platform-dependent concerns:
 
 ## Performance Trade-off
 
-The current journal writes several durable records per move. This is intentionally conservative and measurably slower than raw rename. Future optimization may batch some safe journal writes, but only after preserving crash-consistency guarantees.
+The single-file path still writes durable JSONL recovery states and now records history in SQLite. The GUI arrange path uses SQLite transactions so large arrange operations avoid thousands of repeated file locks and `fsync()` calls while preserving write-ahead intent and undo history.

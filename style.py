@@ -7,7 +7,7 @@ APP_STYLE = """
             background-color: #191A19;
             color: #F6F3ED;
             font-family: "Avenir Next", "Helvetica Neue", Arial;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         QPushButton {
@@ -15,7 +15,7 @@ APP_STYLE = """
             color: #F6F3ED;
             border: 1px solid #40413F;
             border-radius: 8px;
-            padding: 6px 12px;
+            padding: 7px 12px;
             font-weight: 600;
         }
 
@@ -28,7 +28,7 @@ APP_STYLE = """
             color: #F6F3ED;
             border: 1px solid #313330;
             border-radius: 10px;
-            padding: 9px 10px;
+            padding: 10px 12px;
         }
 
         QComboBox {
@@ -36,13 +36,32 @@ APP_STYLE = """
             color: #F6F3ED;
             border: 1px solid #313330;
             border-radius: 10px;
-            padding: 8px;
+            padding: 8px 30px 8px 10px;
             min-width: 110px;
         }
 
         QComboBox::drop-down {
-            border: none;
-            width: 24px;
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            border-left: 1px solid #313330;
+            width: 26px;
+            border-top-right-radius: 10px;
+            border-bottom-right-radius: 10px;
+            background-color: #181918;
+        }
+
+        QComboBox::down-arrow {
+            image: none;
+            width: 0px;
+            height: 0px;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid #AEB4BF;
+            margin-right: 8px;
+        }
+
+        QComboBox::drop-down:hover {
+            background-color: #222321;
         }
 
         QComboBox QAbstractItemView {
@@ -128,7 +147,7 @@ APP_STYLE = """
         }
 
         QLabel#folderName {
-            font-size: 28px;
+            font-size: 27px;
             font-weight: 720;
             padding: 6px 0px 0px 0px;
         }
@@ -228,6 +247,23 @@ APP_STYLE = """
             color: #29D85F;
             font-size: 14px;
             padding: 0px;
+        }
+
+        QLabel#fieldLabel {
+            color: #979890;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 0px;
+        }
+
+        QLabel#rulePreviewLabel {
+            background-color: #111211;
+            color: #F6F3ED;
+            border: 1px solid #313330;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 10px 12px;
         }
 
         QTreeWidget#settingsRulesTable {
@@ -366,7 +402,7 @@ APP_STYLE = """
         }
 
         QTreeWidget#folderContentsList::item {
-            padding: 7px 8px;
+            padding: 8px 8px;
             border-bottom: 1px solid #30312F;
         }
 
@@ -681,10 +717,10 @@ APP_STYLE = """
 
         QLabel#foldersTitle {
             color: #8D95A3;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 500;
             text-transform: uppercase;
-            padding: 12px 0px 4px 0px;
+            padding: 10px 0px 4px 0px;
         }
 
         QPushButton#sidebarBrand {
@@ -692,11 +728,11 @@ APP_STYLE = """
             color: #F6F3ED;
             border: none;
             border-radius: 10px;
-            padding: 2px 0px 10px 0px;
-            font-size: 24px;
+            padding: 2px 0px 8px 0px;
+            font-size: 21px;
             font-weight: 720;
             text-align: left;
-            min-height: 36px;
+            min-height: 34px;
         }
 
         QPushButton#sidebarBrand:disabled {
@@ -706,14 +742,14 @@ APP_STYLE = """
 
         QPushButton#folderItem {
             color: #B8C0CE;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 500;
-            padding: 8px 10px;
+            padding: 7px 9px;
             text-align: left;
             border: none;
             background-color: transparent;
             border-radius: 8px;
-            min-height: 32px;
+            min-height: 30px;
         }
 
         QPushButton#folderItem:hover {
@@ -724,12 +760,12 @@ APP_STYLE = """
             background-color: #343841;
             color: #E8EDF7;
             border-radius: 8px;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 500;
-            padding: 8px 10px;
+            padding: 7px 9px;
             text-align: left;
             border: none;
-            min-height: 32px;
+            min-height: 30px;
         }
 
         QLabel#sidebarFooterDivider {
@@ -746,11 +782,11 @@ APP_STYLE = """
             color: #B8C0CE;
             border: none;
             border-radius: 8px;
-            padding: 8px 10px;
-            font-size: 15px;
+            padding: 7px 9px;
+            font-size: 14px;
             font-weight: 500;
             text-align: left;
-            min-height: 32px;
+            min-height: 30px;
         }
 
         QPushButton#sidebarFooterButton:hover {
@@ -763,11 +799,11 @@ APP_STYLE = """
             color: #E8EDF7;
             border: none;
             border-radius: 8px;
-            padding: 8px 10px;
-            font-size: 15px;
+            padding: 7px 9px;
+            font-size: 14px;
             font-weight: 500;
             text-align: left;
-            min-height: 32px;
+            min-height: 30px;
         }
 
         QPushButton#proceedButton {
@@ -844,22 +880,22 @@ APP_STYLE = """
             background-color: #29D85F;
             color: #07150B;
             border: none;
-            border-radius: 8px;
-            padding: 6px 12px;
-            font-size: 14px;
+            border-radius: 9px;
+            padding: 7px 14px;
+            font-size: 13px;
             font-weight: 700;
-            min-height: 28px;
+            min-height: 30px;
         }
 
         QPushButton#commandButton {
             background-color: #20211F;
             color: #F6F3ED;
             border: 1px solid #40413F;
-            border-radius: 8px;
-            padding: 6px 12px;
-            font-size: 14px;
+            border-radius: 9px;
+            padding: 7px 14px;
+            font-size: 13px;
             font-weight: 650;
-            min-height: 28px;
+            min-height: 30px;
         }
 
         QPushButton#commandButton:hover {

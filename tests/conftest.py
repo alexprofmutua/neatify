@@ -18,19 +18,23 @@ def isolated_app_files(tmp_path, monkeypatch):
     import journal
     import neatify
     import rules
+    import sqlite_store
 
     history_path = tmp_path / "neatify_history.txt"
     journal_path = tmp_path / "neatify_journal.jsonl"
     rules_path = tmp_path / "neatify_rules.json"
+    database_path = tmp_path / "neatify.db"
 
     monkeypatch.setattr(neatify, "get_history_path", lambda: str(history_path))
     monkeypatch.setattr(journal, "get_journal_path", lambda: str(journal_path))
     monkeypatch.setattr(rules, "get_rules_file", lambda: str(rules_path))
+    monkeypatch.setattr(sqlite_store, "get_database_path", lambda: str(database_path))
 
     return {
         "history_path": history_path,
         "journal_path": journal_path,
         "rules_path": rules_path,
+        "database_path": database_path,
     }
 
 

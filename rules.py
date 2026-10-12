@@ -21,6 +21,7 @@ DEFAULT_EXTENSION_UPDATES = {
 def get_default_rules():
     return {
         "extensions": extension_categories.copy(),
+        "extension_rules": [],
         "keywords": {},
         "keyword_rules": [],
         "default_extension_version": DEFAULT_EXTENSION_VERSION,
@@ -65,8 +66,13 @@ def load_rules():
     if "keywords" not in rules:
         rules["keywords"] = {}
 
+    if "extension_rules" not in rules:
+        rules["extension_rules"] = []
+        rules_changed = True
+
     if "keyword_rules" not in rules:
         rules["keyword_rules"] = []
+        rules_changed = True
 
     for keyword in rules["keywords"]:
         existing_rule = find_keyword_rule(rules["keyword_rules"], keyword, "")
@@ -107,6 +113,7 @@ def get_arrangement_for_file(file_name, folder_path=""):
 def get_arrangement_for_file_with_rules(file_name, folder_path, rules):
     lowered_file_name = file_name.lower()
     normalized_folder_path = normalize_scope_path(folder_path)
+    extension = get_extension_from_file_name(file_name)
 
     folder_rules = []
     global_rules = []
@@ -139,7 +146,26 @@ def get_arrangement_for_file_with_rules(file_name, folder_path, rules):
                 "reason": "Keyword: " + keyword,
             }
 
-    extension = get_extension_from_file_name(file_name)
+    folder_extension_rules = []
+    global_extension_rules = []
+
+    for rule in rules.get("extension_rules", []):
+        rule_extension = clean_extension(rule.get("extension", ""))
+        scope = normalize_scope_path(rule.get("scope", ""))
+
+        if rule_extension != extension:
+            continue
+
+        if scope != "" and scope == normalized_folder_path:
+            folder_extension_rules.append(rule)
+        elif scope == "":
+            global_extension_rules.append(rule)
+
+    for rule in folder_extension_rules + global_extension_rules:
+        return {
+            "destination": clean_destination_folder(rule.get("destination", "Other")),
+            "reason": "Extension: " + extension,
+        }
 
     destination = rules["extensions"].get(extension, "Other")
 
@@ -155,6 +181,17 @@ def find_keyword_rule(keyword_rules, keyword, scope):
 
     for rule in keyword_rules:
         if rule.get("keyword", "").lower() == clean_keyword and normalize_scope_path(rule.get("scope", "")) == clean_scope:
+            return rule
+
+    return None
+
+
+def find_extension_rule(extension_rules, extension, scope):
+    clean_rule_extension = clean_extension(extension)
+    clean_scope = normalize_scope_path(scope)
+
+    for rule in extension_rules:
+        if clean_extension(rule.get("extension", "")) == clean_rule_extension and normalize_scope_path(rule.get("scope", "")) == clean_scope:
             return rule
 
     return None
@@ -192,10 +229,30 @@ def get_extension_from_file_name(file_name):
     return "other"
 
 
-def add_extension_rule(extension, category):
+def clean_extension(extension):
+    return extension.lower().replace(".", "").strip()
+
+
+def add_extension_rule(extension, category, scope=""):
     rules = load_rules()
-    clean_extension = extension.lower().replace(".", "")
-    rules["extensions"][clean_extension] = category
+    clean_rule_extension = clean_extension(extension)
+    clean_scope = normalize_scope_path(scope)
+    clean_destination = clean_destination_folder(category)
+
+    if clean_scope == "":
+        rules["extensions"][clean_rule_extension] = clean_destination
+    else:
+        existing_rule = find_extension_rule(rules["extension_rules"], clean_rule_extension, clean_scope)
+
+        if existing_rule is None:
+            rules["extension_rules"].append({
+                "extension": clean_rule_extension,
+                "destination": clean_destination,
+                "scope": clean_scope,
+            })
+        else:
+            existing_rule["destination"] = clean_destination
+
     save_rules(rules)
 
 
@@ -222,12 +279,27 @@ def add_keyword_rule(keyword, category, scope=""):
     save_rules(rules)
 
 
-def remove_extension_rule(extension):
+def remove_extension_rule(extension, scope=None):
     rules = load_rules()
-    clean_extension = extension.lower().replace(".", "")
+    clean_rule_extension = clean_extension(extension)
 
-    if clean_extension in rules["extensions"]:
-        del rules["extensions"][clean_extension]
+    if scope in [None, ""] and clean_rule_extension in rules["extensions"]:
+        del rules["extensions"][clean_rule_extension]
+
+    if scope is None:
+        rules["extension_rules"] = [
+            rule for rule in rules.get("extension_rules", [])
+            if clean_extension(rule.get("extension", "")) != clean_rule_extension
+        ]
+    else:
+        clean_scope = normalize_scope_path(scope)
+        rules["extension_rules"] = [
+            rule for rule in rules.get("extension_rules", [])
+            if not (
+                clean_extension(rule.get("extension", "")) == clean_rule_extension
+                and normalize_scope_path(rule.get("scope", "")) == clean_scope
+            )
+        ]
 
     save_rules(rules)
 
@@ -236,7 +308,7 @@ def remove_keyword_rule(keyword, scope=None):
     rules = load_rules()
     clean_keyword = keyword.lower()
 
-    if scope is None and clean_keyword in rules["keywords"]:
+    if scope in [None, ""] and clean_keyword in rules["keywords"]:
         del rules["keywords"][clean_keyword]
 
     if scope is None:
@@ -261,6 +333,7 @@ def find_with_filters(search_text, search_folder, search_type="All", include_sub
     search_path = os.path.expanduser(search_folder)
     clean_search_text = search_text.lower().replace(".", "")
     found_items = []
+    rules = load_rules()
 
     if not os.path.exists(search_path):
         return found_items
@@ -271,51 +344,72 @@ def find_with_filters(search_text, search_folder, search_type="All", include_sub
     clean_search_type = search_type.lower()
 
     if include_subfolders:
-        folders_to_search = []
-
-        for current_folder, folders, files in os.walk(search_path):
-            folders_to_search.append((current_folder, folders, files))
+        for current_folder, folders, files in os.walk(search_path, onerror=lambda error: None):
+            append_matching_find_results(
+                found_items,
+                current_folder,
+                folders,
+                files,
+                clean_search_text,
+                clean_search_type,
+                rules,
+            )
     else:
         folders = []
         files = []
 
-        for item in os.listdir(search_path):
-            full_path = os.path.join(search_path, item)
+        try:
+            folder_entries = os.scandir(search_path)
+        except OSError:
+            return found_items
 
-            if os.path.isdir(full_path):
-                folders.append(item)
-            elif os.path.isfile(full_path):
-                files.append(item)
+        with folder_entries:
+            entries = list(folder_entries)
 
-        folders_to_search = [(search_path, folders, files)]
-
-    for current_folder, folders, files in folders_to_search:
-        if clean_search_type in ["all", "folders"]:
-            for folder in folders:
-                if clean_search_text in folder.lower():
-                    found_items.append(os.path.join(current_folder, folder))
-
-        if clean_search_type == "folders":
-            continue
-
-        for file_name in files:
-            full_path = os.path.join(current_folder, file_name)
-
-            if not os.path.isfile(full_path):
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    folders.append(entry.name)
+                elif entry.is_file(follow_symlinks=False):
+                    files.append(entry.name)
+            except OSError:
                 continue
 
-            extension = get_extension_from_file_name(file_name)
-            category = get_category_for_file(file_name)
-
-            if clean_search_type != "all" and clean_search_type != "files":
-                if clean_search_type != extension and clean_search_type != category.lower():
-                    continue
-
-            if clean_search_text == extension:
-                found_items.append(full_path)
-            elif clean_search_text == category.lower():
-                found_items.append(full_path)
-            elif clean_search_text in file_name.lower():
-                found_items.append(full_path)
+        append_matching_find_results(
+            found_items,
+            search_path,
+            folders,
+            files,
+            clean_search_text,
+            clean_search_type,
+            rules,
+        )
 
     return found_items
+
+
+def append_matching_find_results(found_items, current_folder, folders, files, clean_search_text, clean_search_type, rules):
+    if clean_search_type in ["all", "folders"]:
+        for folder in folders:
+            if clean_search_text in folder.lower():
+                found_items.append(os.path.join(current_folder, folder))
+
+    if clean_search_type == "folders":
+        return
+
+    for file_name in files:
+        full_path = os.path.join(current_folder, file_name)
+
+        extension = get_extension_from_file_name(file_name)
+        category = get_arrangement_for_file_with_rules(file_name, current_folder, rules)["destination"]
+
+        if clean_search_type != "all" and clean_search_type != "files":
+            if clean_search_type != extension and clean_search_type != category.lower():
+                continue
+
+        if clean_search_text == extension:
+            found_items.append(full_path)
+        elif clean_search_text == category.lower():
+            found_items.append(full_path)
+        elif clean_search_text in file_name.lower():
+            found_items.append(full_path)

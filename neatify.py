@@ -6,7 +6,8 @@ import subprocess
 # Imports Python's date/time tools
 from datetime import datetime
 from app_paths import migrate_local_file
-from journal import append_move_state, create_operation_id, get_journal_path, read_journal_records
+from journal import append_move_state, append_move_states, create_move_state_record, create_operation_id, get_journal_path, read_journal_records
+from sqlite_store import get_sqlite_operation_ids, import_legacy_history_items, mark_batch_undone, read_sqlite_history_items, record_batch_plan, record_batch_results, recover_sqlite_operations
 
 # Shortcuts
 system = os
@@ -143,9 +144,10 @@ def find_and_open(item_name, search_folder="~"):
         print(str(number) + ".", result)
         number = number + 1
 
-def move_file(full_path, destination, dry_run, move_id=None):
+def move_file(full_path, destination, dry_run, move_id=None, quiet=False):
     if dry_run:
-        print("Would move:", full_path, "->", destination)
+        if not quiet:
+            print("Would move:", full_path, "->", destination)
     else:
         if move_id is None:
             move_id = create_move_id()
@@ -155,22 +157,98 @@ def move_file(full_path, destination, dry_run, move_id=None):
         if paths.exists(destination):
             raise FileExistsError("Destination already exists: " + destination)
 
+        prepared_move = {
+            "operation_id": operation_id,
+            "old_path": full_path,
+            "new_path": destination,
+        }
+
+        record_batch_plan(move_id, [prepared_move])
         append_move_state(operation_id, move_id, full_path, destination, "planned")
         append_move_state(operation_id, move_id, full_path, destination, "moving")
-        system.rename(full_path, destination)
+
+        try:
+            system.rename(full_path, destination)
+        except OSError as error:
+            failed_move = prepared_move.copy()
+            failed_move["error"] = str(error)
+            record_batch_results(move_id, [], [failed_move])
+            raise
+
         append_move_state(operation_id, move_id, full_path, destination, "moved")
-        print("Moved:", full_path, "->", destination)
-        write_history("Moved", full_path, destination, move_id)
+        record_batch_results(move_id, [prepared_move], [])
+        if not quiet:
+            print("Moved:", full_path, "->", destination)
         append_move_state(operation_id, move_id, full_path, destination, "history_committed")
+
+
+def move_files_batch(move_plan, move_id=None):
+    if move_id is None:
+        move_id = create_move_id()
+
+    prepared_moves = []
+    errors = []
+
+    for move in move_plan:
+        old_path = move["old_path"]
+        new_path = move["new_path"]
+
+        if not paths.exists(old_path):
+            errors.append("Missing: " + old_path)
+            continue
+
+        if paths.exists(new_path):
+            errors.append("Destination already exists: " + new_path)
+            continue
+
+        prepared_moves.append({
+            "operation_id": create_operation_id(),
+            "old_path": old_path,
+            "new_path": new_path,
+        })
+
+    # One durable SQLite transaction records the whole batch before any file moves.
+    record_batch_plan(move_id, prepared_moves)
+
+    moved_moves = []
+    failed_moves = []
+    moved_count = 0
+
+    for move in prepared_moves:
+        old_path = move["old_path"]
+        new_path = move["new_path"]
+
+        try:
+            system.makedirs(paths.dirname(new_path), exist_ok=True)
+
+            if paths.exists(new_path):
+                raise FileExistsError("Destination already exists: " + new_path)
+
+            system.rename(old_path, new_path)
+            moved_count = moved_count + 1
+            moved_moves.append(move)
+        except OSError as error:
+            errors.append(paths.basename(old_path) + ": " + str(error))
+            failed_move = move.copy()
+            failed_move["error"] = str(error)
+            failed_moves.append(failed_move)
+
+    record_batch_results(move_id, moved_moves, failed_moves)
+
+    return {
+        "move_id": move_id,
+        "moved_count": moved_count,
+        "errors": errors,
+    }
 
 def create_move_id():
     return "move_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
 
-def write_history(action, old_path, new_path, move_id):
+def create_history_record(action, old_path, new_path, move_id):
     # Gets the current date and time and Formats the date/time into readable text, in that order
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Opens the history file in append mode and closes it afterwards.
-    history_record = {
+
+    return {
         "version": 1,
         "time": timestamp,
         "move_id": move_id,
@@ -179,6 +257,13 @@ def write_history(action, old_path, new_path, move_id):
         "new_path": new_path,
     }
 
+
+def write_history(action, old_path, new_path, move_id):
+    write_history_records([create_history_record(action, old_path, new_path, move_id)])
+
+
+def write_history_records(history_records):
+    # Opens the history file in append mode and closes it afterwards.
     import json
 
     history_path = get_history_path()
@@ -186,7 +271,9 @@ def write_history(action, old_path, new_path, move_id):
     system.makedirs(history_folder, exist_ok=True)
 
     with open(history_path, "a", encoding="utf-8") as history_file:
-        history_file.write(json.dumps(history_record, sort_keys=True, ensure_ascii=False) + "\n")
+        for history_record in history_records:
+            history_file.write(json.dumps(history_record, sort_keys=True, ensure_ascii=False) + "\n")
+
         history_file.flush()
         system.fsync(history_file.fileno())
 
@@ -250,21 +337,26 @@ def parse_history_line(line):
     }
 
 def read_history_items():
+    import_legacy_history_once()
+    return read_sqlite_history_items()
+
+
+def import_legacy_history_once():
     history_path = get_history_path()
 
     if not paths.exists(history_path):
-        return []
+        return 0
 
-    history_items = []
+    legacy_items = []
 
     with open(history_path, "r", encoding="utf-8") as history_file:
         for line in history_file:
             history_item = parse_history_line(line)
 
             if history_item is not None:
-                history_items.append(history_item)
+                legacy_items.append(history_item)
 
-    return history_items
+    return import_legacy_history_items(history_path, legacy_items)
 
 def get_history_path():
     return migrate_local_file("neatify_history.txt")
@@ -339,12 +431,15 @@ def undo_move_by_id(target_move_id):
         append_move_state(operation_id, target_move_id, new_path, old_path, "undo_moving")
         system.rename(new_path, old_path)
         append_move_state(operation_id, target_move_id, new_path, old_path, "undo_moved")
-        write_history("UNDONE", new_path, old_path, target_move_id)
         append_move_state(operation_id, target_move_id, new_path, old_path, "undo_history_committed")
+
+    mark_batch_undone(target_move_id)
 
     return "Undone " + str(len(moves_to_undo)) + " files."
 
 def recover_incomplete_operations():
+    sqlite_recovery_result = recover_sqlite_operations()
+    sqlite_operation_ids = get_sqlite_operation_ids()
     recovered_count = 0
     conflict_count = 0
     operations = {}
@@ -353,6 +448,9 @@ def recover_incomplete_operations():
         operation_id = record.get("operation_id")
 
         if operation_id is None:
+            continue
+
+        if operation_id in sqlite_operation_ids:
             continue
 
         operations.setdefault(operation_id, []).append(record)
@@ -424,8 +522,8 @@ def recover_incomplete_operations():
                 conflict_count = conflict_count + 1
 
     return {
-        "recovered": recovered_count,
-        "conflicts": conflict_count,
+        "recovered": recovered_count + sqlite_recovery_result["recovered"],
+        "conflicts": conflict_count + sqlite_recovery_result["conflicts"],
     }
 
 def get_unique_destination(destination):
@@ -519,12 +617,26 @@ def get_common_folders():
     folder_names = get_common_folder_names()
 
     folders = []
+    candidate_roots = [home]
+
+    if platform.system() == "Windows":
+        for variable_name in ["USERPROFILE", "OneDrive", "OneDriveConsumer", "OneDriveCommercial"]:
+            folder_root = os.environ.get(variable_name)
+
+            if folder_root is not None and folder_root not in candidate_roots:
+                candidate_roots.append(folder_root)
 
     for folder_name in folder_names:
-        folder_path = paths.join(home, folder_name)
+        for candidate_root in candidate_roots:
+            folder_path = paths.join(candidate_root, folder_name)
+            normalized_path = paths.abspath(paths.expanduser(folder_path))
 
-        if paths.exists(folder_path) and paths.isdir(folder_path):
-            folders.append(folder_path)
+            if normalized_path in folders:
+                continue
+
+            if paths.exists(normalized_path) and paths.isdir(normalized_path):
+                folders.append(normalized_path)
+                break
 
     return folders
 

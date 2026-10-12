@@ -2,17 +2,18 @@
 
 import csv
 import os   # Imports Python's file and folder tools
+import platform
 import re
 from datetime import datetime
 from app_paths import get_project_path
 from app_settings import load_app_settings, save_app_settings
 from style import APP_STYLE
 from state import AppState
-from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtCore import QObject, QEvent, QSize, Qt, QThread, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QStyle, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 from components import create_folder_button
-from neatify import create_move_id, get_common_folders, get_history_path, get_unique_destination_with_name_cache, move_file, open_item, parse_history_line, preview_organize_folder, undo_last_move, undo_move_by_id
+from neatify import create_move_id, get_common_folders, get_history_path, get_unique_destination_with_name_cache, move_files_batch, open_item, parse_history_line, preview_organize_folder, read_history_items, undo_last_move, undo_move_by_id
 from rules import add_extension_rule, add_keyword_rule, find_with_filters, get_arrangement_for_file, get_arrangement_for_file_with_rules, get_category_for_file, load_rules, remove_extension_rule, remove_keyword_rule
 
 try:
@@ -21,6 +22,97 @@ try:
 except ImportError:
     QPdfDocument = None
     QPdfView = None
+
+
+def get_windows_external_drive_paths():
+    drive_paths = []
+    system_drive = os.environ.get("SystemDrive", "C:").upper()
+
+    for letter_code in range(ord("A"), ord("Z") + 1):
+        drive_root = chr(letter_code) + ":\\"
+        drive_label = drive_root[:2].upper()
+
+        if drive_label == system_drive:
+            continue
+
+        if not os.path.exists(drive_root):
+            continue
+
+        if not os.path.isdir(drive_root):
+            continue
+
+        try:
+            os.listdir(drive_root)
+        except OSError:
+            continue
+
+        drive_paths.append(drive_root)
+
+    return drive_paths
+
+
+class ArrangeWorker(QObject):
+    finished = Signal(dict)
+
+    def __init__(self, move_plan, batch_id):
+        super().__init__()
+        self.move_plan = move_plan
+        self.batch_id = batch_id
+
+    def run(self):
+        try:
+            result = move_files_batch(self.move_plan, self.batch_id)
+        except OSError as error:
+            result = {
+                "move_id": self.batch_id,
+                "moved_count": 0,
+                "errors": [str(error)],
+            }
+
+        self.finished.emit(result)
+
+
+class FindWorker(QObject):
+    finished = Signal(dict)
+
+    def __init__(self, item_name, search_roots, search_type, include_subfolders):
+        super().__init__()
+        self.item_name = item_name
+        self.search_roots = search_roots
+        self.search_type = search_type
+        self.include_subfolders = include_subfolders
+
+    def run(self):
+        seen_paths = set()
+        results = []
+        errors = []
+
+        for search_root in self.search_roots:
+            try:
+                root_results = find_with_filters(
+                    self.item_name,
+                    search_root,
+                    self.search_type,
+                    self.include_subfolders,
+                )
+            except OSError as error:
+                errors.append(str(error))
+                continue
+
+            for result in root_results:
+                normalized_result = os.path.abspath(os.path.expanduser(result))
+
+                if normalized_result in seen_paths:
+                    continue
+
+                seen_paths.add(normalized_result)
+                results.append(normalized_result)
+
+        self.finished.emit({
+            "item_name": self.item_name,
+            "results": results,
+            "errors": errors,
+        })
 
 
 class NeatifyWindow(QMainWindow):
@@ -35,6 +127,12 @@ class NeatifyWindow(QMainWindow):
         self.folder_buttons = []
         self.folder_button_paths = {}
         self.folder_back_stack = []
+        self.arrange_thread = None
+        self.arrange_worker = None
+        self.find_thread = None
+        self.find_worker = None
+        self.pending_arrange_folder_path = ""
+        self.pending_arrange_errors = []
         self.help_dialog = None
         self.setWindowTitle("Neatify")
         self.setWindowIcon(QIcon(get_project_path("assets", "neatify-logo.svg")))
@@ -212,17 +310,17 @@ class NeatifyWindow(QMainWindow):
         self.center_panel.setObjectName("centerPanel")
         self.right_panel.setObjectName("rightPanel")
 
-        self.left_panel.setMinimumWidth(280)
-        self.left_panel.setMaximumWidth(300)
+        self.left_panel.setMinimumWidth(220)
+        self.left_panel.setMaximumWidth(240)
         self.right_panel.setMinimumWidth(300)
-        self.right_panel.setMaximumWidth(360)
+        self.right_panel.setMaximumWidth(340)
 
         self.left_layout = QVBoxLayout()
         self.center_panel_layout = QVBoxLayout()
         self.center_layout = QVBoxLayout()
         self.right_layout = QVBoxLayout()
 
-        self.left_layout.setContentsMargins(22, 34, 20, 28)
+        self.left_layout.setContentsMargins(16, 28, 14, 24)
         self.center_panel_layout.setContentsMargins(0, 0, 0, 0)
         self.center_layout.setContentsMargins(24, 24, 24, 24)
         self.right_layout.setContentsMargins(20, 28, 20, 24)
@@ -248,7 +346,7 @@ class NeatifyWindow(QMainWindow):
         self.center_panel_layout.addWidget(self.center_scroll_area)
 
         self.app_layout.insertWidget(0, self.left_panel)
-        self.main_layout.addWidget(self.center_panel, 2)
+        self.main_layout.addWidget(self.center_panel, 3)
         self.main_layout.addWidget(self.right_panel, 1)
 
         self.create_folder_panel()
@@ -604,19 +702,28 @@ class NeatifyWindow(QMainWindow):
         my_rules_help = QLabel("Create simple rules for file types or words in file names.")
         my_rules_help.setObjectName("settingsHelp")
 
-        rule_form_layout = QHBoxLayout()
+        rule_form_layout = QGridLayout()
+        rule_form_layout.setHorizontalSpacing(10)
+        rule_form_layout.setVerticalSpacing(6)
         self.rule_type_input = QComboBox()
         self.rule_type_input.addItems(["Extension", "Keyword"])
         self.rule_type_input.currentTextChanged.connect(self.update_rule_form_placeholders)
 
-        self.rule_match_input = QLineEdit()
-        self.rule_match_input.setPlaceholderText("pdf")
+        self.rule_match_input = QComboBox()
+        self.rule_match_input.setEditable(True)
+        self.rule_match_input.addItems(["pdf", "jpg", "png", "mp4", "docx", "xlsx", "zip"])
 
-        self.rule_category_input = QLineEdit()
-        self.rule_category_input.setPlaceholderText("Documents")
+        self.rule_category_input = QComboBox()
+        self.rule_category_input.setEditable(True)
+        self.rule_category_input.addItems(["Documents", "Images", "Videos", "Audio", "Archives", "Spreadsheets", "Presentations", "Code", "Installers", "Other"])
 
         self.rule_scope_input = QComboBox()
-        self.rule_scope_input.addItems(["Everywhere", "This folder only"])
+        self.populate_rule_scope_options()
+
+        self.rule_type_input.currentTextChanged.connect(self.update_rule_sentence_preview)
+        self.rule_match_input.currentTextChanged.connect(self.update_rule_sentence_preview)
+        self.rule_category_input.currentTextChanged.connect(self.update_rule_sentence_preview)
+        self.rule_scope_input.currentTextChanged.connect(self.update_rule_sentence_preview)
 
         self.add_rule_button = QPushButton("Add Rule")
         self.add_rule_button.setObjectName("primaryCommand")
@@ -630,19 +737,36 @@ class NeatifyWindow(QMainWindow):
         self.clear_rule_form_button.setObjectName("secondaryActionButton")
         self.clear_rule_form_button.clicked.connect(self.clear_rule_form)
 
-        rule_form_layout.addWidget(self.rule_type_input)
-        rule_form_layout.addWidget(self.rule_match_input)
-        rule_form_layout.addWidget(self.rule_category_input)
-        rule_form_layout.addWidget(self.rule_scope_input)
-        rule_form_layout.addWidget(self.add_rule_button)
-        rule_form_layout.addWidget(self.remove_rule_button)
-        rule_form_layout.addWidget(self.clear_rule_form_button)
+        rule_type_label = QLabel("Rule type")
+        rule_type_label.setObjectName("fieldLabel")
+        rule_match_label = QLabel("Match")
+        rule_match_label.setObjectName("fieldLabel")
+        rule_category_label = QLabel("Send to")
+        rule_category_label.setObjectName("fieldLabel")
+        rule_scope_label = QLabel("Apply to")
+        rule_scope_label.setObjectName("fieldLabel")
+
+        rule_form_layout.addWidget(rule_type_label, 0, 0)
+        rule_form_layout.addWidget(rule_match_label, 0, 1)
+        rule_form_layout.addWidget(rule_category_label, 0, 2)
+        rule_form_layout.addWidget(rule_scope_label, 0, 3)
+        rule_form_layout.addWidget(self.rule_type_input, 1, 0)
+        rule_form_layout.addWidget(self.rule_match_input, 1, 1)
+        rule_form_layout.addWidget(self.rule_category_input, 1, 2)
+        rule_form_layout.addWidget(self.rule_scope_input, 1, 3)
+        rule_form_layout.addWidget(self.add_rule_button, 1, 4)
+        rule_form_layout.addWidget(self.remove_rule_button, 1, 5)
+        rule_form_layout.addWidget(self.clear_rule_form_button, 1, 6)
 
         self.rule_helper_label = QLabel("")
         self.rule_helper_label.setObjectName("settingsHelp")
         self.update_rule_form_placeholders()
 
-        self.rule_priority_label = QLabel("Priority: folder keywords, global keywords, extensions, then Other.")
+        self.rule_sentence_label = QLabel("")
+        self.rule_sentence_label.setObjectName("rulePreviewLabel")
+        self.update_rule_sentence_preview()
+
+        self.rule_priority_label = QLabel("Priority: keyword rules win before extension rules. Folder-specific rules win before everywhere rules.")
         self.rule_priority_label.setObjectName("settingsHelp")
 
         self.settings_message_label = QLabel("")
@@ -653,6 +777,8 @@ class NeatifyWindow(QMainWindow):
         self.settings_rules_table.setColumnCount(4)
         self.settings_rules_table.setHeaderLabels(["Rule", "Match", "Folder", "Scope"])
         self.settings_rules_table.setRootIsDecorated(False)
+        self.settings_rules_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.settings_rules_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.settings_rules_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.settings_rules_table.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.settings_rules_table.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -687,6 +813,7 @@ class NeatifyWindow(QMainWindow):
         my_rules_layout.addWidget(my_rules_help)
         my_rules_layout.addLayout(rule_form_layout)
         my_rules_layout.addWidget(self.rule_helper_label)
+        my_rules_layout.addWidget(self.rule_sentence_label)
         my_rules_layout.addWidget(self.rule_priority_label)
         my_rules_layout.addWidget(self.settings_message_label)
         my_rules_layout.addWidget(self.settings_rules_table, 1)
@@ -896,13 +1023,20 @@ class NeatifyWindow(QMainWindow):
         folder_count = 0
         file_count = 0
 
-        for item in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, item)
-
-            if os.path.isdir(full_path):
-                folder_count = folder_count + 1
-            elif os.path.isfile(full_path):
-                file_count = file_count + 1
+        try:
+            with os.scandir(folder_path) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            folder_count = folder_count + 1
+                        elif entry.is_file(follow_symlinks=False):
+                            file_count = file_count + 1
+                    except OSError:
+                        continue
+        except PermissionError:
+            return "No permission to read folder"
+        except OSError:
+            return "Could not read folder"
 
         return str(folder_count) + " folders - " + str(file_count) + " files"
 
@@ -915,12 +1049,19 @@ class NeatifyWindow(QMainWindow):
         if not os.path.isdir(folder_path):
             return counts
 
-        for item in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, item)
+        rules = load_rules()
 
-            if os.path.isfile(full_path):
-                category = get_category_for_file(item)
-                counts[category] = counts.get(category, 0) + 1
+        try:
+            with os.scandir(folder_path) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_file(follow_symlinks=False):
+                            category = get_arrangement_for_file_with_rules(entry.name, folder_path, rules)["destination"]
+                            counts[category] = counts.get(category, 0) + 1
+                    except OSError:
+                        continue
+        except OSError:
+            return counts
 
         return counts
 
@@ -1134,18 +1275,62 @@ class NeatifyWindow(QMainWindow):
             self.show_output("Find", ["Type a file or folder name after find."])
             return
 
-        results = find_with_filters(
+        if self.find_thread is not None:
+            self.show_output("Find", ["Search is already running."])
+            return
+
+        search_roots = self.get_find_search_roots()
+        self.show_output("Find", ["Searching " + str(len(search_roots)) + " locations..."])
+        self.find_button.setEnabled(False)
+        self.find_button.setText("Finding...")
+
+        self.find_thread = QThread()
+        self.find_worker = FindWorker(
             item_name,
-            self.state.selected_folder_path,
+            search_roots,
             self.app_settings["search_type"],
             self.app_settings["include_subfolders"],
         )
+        self.find_worker.moveToThread(self.find_thread)
+        self.find_thread.started.connect(self.find_worker.run)
+        self.find_worker.finished.connect(self.finish_find_results)
+        self.find_worker.finished.connect(self.find_thread.quit)
+        self.find_worker.finished.connect(self.find_worker.deleteLater)
+        self.find_thread.finished.connect(self.find_thread.deleteLater)
+        self.find_thread.finished.connect(self.clear_find_worker)
+        self.find_thread.start()
+
+    def finish_find_results(self, find_result):
+        results = find_result["results"]
 
         if len(results) == 0:
             self.show_output("Find results", ["No matching item found."])
             return
 
         self.show_path_results("Find results", results)
+
+    def clear_find_worker(self):
+        self.find_thread = None
+        self.find_worker = None
+        self.find_button.setEnabled(True)
+        self.find_button.setText("Find")
+
+    def get_find_search_roots(self):
+        roots = []
+
+        for folder_path in get_common_folders():
+            normalized_path = os.path.abspath(os.path.expanduser(folder_path))
+
+            if normalized_path not in roots:
+                roots.append(normalized_path)
+
+        for folder_path in [self.state.selected_folder_path, self.state.current_view_folder_path]:
+            normalized_path = os.path.abspath(os.path.expanduser(folder_path))
+
+            if os.path.isdir(normalized_path) and normalized_path not in roots:
+                roots.append(normalized_path)
+
+        return roots
 
     def apply_rule_command(self, command):
         lowered_command = command.lower()
@@ -1460,12 +1645,12 @@ class NeatifyWindow(QMainWindow):
 
     def add_rule_from_form(self):
         rule_type = self.rule_type_input.currentText()
-        match_text = self.rule_match_input.text().strip()
-        category = self.rule_category_input.text().strip()
-        scope = ""
+        match_text = self.rule_match_input.currentText().strip()
+        category = self.rule_category_input.currentText().strip()
+        scope = self.rule_scope_input.currentData()
 
-        if rule_type == "Keyword" and self.rule_scope_input.currentText() == "This folder only":
-            scope = self.state.selected_folder_path
+        if scope is None:
+            scope = ""
 
         if match_text == "" or category == "":
             self.settings_message_label.setText("Type both a match and a folder name.")
@@ -1477,13 +1662,18 @@ class NeatifyWindow(QMainWindow):
 
         if self.editing_rule_type is not None:
             if self.editing_rule_type == "Extension":
-                remove_extension_rule(self.editing_rule_match)
+                remove_extension_rule(self.editing_rule_match, self.editing_rule_scope)
             elif self.editing_rule_type == "Keyword":
                 remove_keyword_rule(self.editing_rule_match, self.editing_rule_scope)
 
         if rule_type == "Extension":
-            add_extension_rule(match_text, category)
-            self.settings_message_label.setText("Saved extension rule: " + match_text + " -> " + category)
+            add_extension_rule(match_text, category, scope)
+            scope_text = "everywhere"
+
+            if scope != "":
+                scope_text = self.get_folder_display_name(scope)
+
+            self.settings_message_label.setText("Saved extension rule: " + match_text + " -> " + category + " (" + scope_text + ")")
         else:
             add_keyword_rule(match_text, category, scope)
             scope_text = "everywhere"
@@ -1508,16 +1698,47 @@ class NeatifyWindow(QMainWindow):
 
         return False
 
-    def update_rule_form_placeholders(self):
-        if self.rule_type_input.currentText() == "Keyword":
-            self.rule_match_input.setPlaceholderText("invoice")
-            self.rule_category_input.setPlaceholderText("Receipts")
-            self.rule_helper_label.setText("Matches file names, e.g. invoice")
+    def update_rule_sentence_preview(self, *args):
+        if not hasattr(self, "rule_sentence_label"):
             return
 
-        self.rule_match_input.setPlaceholderText("pdf")
-        self.rule_category_input.setPlaceholderText("Documents")
-        self.rule_helper_label.setText("File type, e.g. pdf")
+        rule_type = self.rule_type_input.currentText()
+        match_text = self.rule_match_input.currentText().strip()
+        category = self.rule_category_input.currentText().strip()
+        scope = self.rule_scope_input.currentData()
+
+        if scope in [None, ""]:
+            scope_text = "everywhere"
+        else:
+            scope_text = self.get_folder_display_name(scope)
+
+        if match_text == "":
+            match_text = "..."
+
+        if category == "":
+            category = "..."
+
+        if rule_type == "Keyword":
+            self.rule_sentence_label.setText("Files with \"" + match_text + "\" in the name go to " + category + " (" + scope_text + ").")
+        else:
+            self.rule_sentence_label.setText("." + match_text.replace(".", "") + " files go to " + category + " (" + scope_text + ").")
+
+    def update_rule_form_placeholders(self):
+        self.rule_match_input.clear()
+
+        if self.rule_type_input.currentText() == "Keyword":
+            self.rule_match_input.addItems(["invoice", "resume", "tax", "meeting", "project"])
+            self.rule_match_input.lineEdit().setPlaceholderText("invoice")
+            self.rule_category_input.lineEdit().setPlaceholderText("Receipts")
+            self.rule_helper_label.setText("Keyword checks words in the file name. Example: invoice")
+            self.update_rule_sentence_preview()
+            return
+
+        self.rule_match_input.addItems(["pdf", "jpg", "png", "mp4", "docx", "xlsx", "zip"])
+        self.rule_match_input.lineEdit().setPlaceholderText("pdf")
+        self.rule_category_input.lineEdit().setPlaceholderText("Documents")
+        self.rule_helper_label.setText("Extension checks the file type. Example: pdf")
+        self.update_rule_sentence_preview()
 
     def load_selected_rule_into_form(self, selected_rule, column=0):
         rule_type = selected_rule.text(0)
@@ -1527,9 +1748,9 @@ class NeatifyWindow(QMainWindow):
         scope_path = selected_rule.data(0, Qt.UserRole)
 
         self.rule_type_input.setCurrentText(rule_type)
-        self.rule_match_input.setText(match_text)
-        self.rule_category_input.setText(category)
-        self.rule_scope_input.setCurrentText("Everywhere" if scope_path in [None, ""] else "This folder only")
+        self.rule_match_input.setCurrentText(match_text)
+        self.rule_category_input.setCurrentText(category)
+        self.set_rule_scope(scope_path)
         self.editing_rule_type = rule_type
         self.editing_rule_match = match_text
         self.editing_rule_scope = scope_path
@@ -1537,9 +1758,9 @@ class NeatifyWindow(QMainWindow):
         self.settings_message_label.setText("Editing rule: " + match_text + " (" + scope_text + ")")
 
     def clear_rule_form(self):
-        self.rule_match_input.clear()
-        self.rule_category_input.clear()
-        self.rule_scope_input.setCurrentText("Everywhere")
+        self.rule_match_input.setCurrentText("")
+        self.rule_category_input.setCurrentText("")
+        self.set_rule_scope("")
         self.editing_rule_type = None
         self.editing_rule_match = None
         self.editing_rule_scope = None
@@ -1552,17 +1773,40 @@ class NeatifyWindow(QMainWindow):
             self.settings_message_label.setText("Select a rule first.")
             return
 
-        selected_rule = selected_items[0]
-        rule_type = selected_rule.text(0)
-        match_text = selected_rule.text(1)
-        scope_path = selected_rule.data(0, Qt.UserRole)
+        selected_rules = []
 
-        if rule_type == "Extension":
-            remove_extension_rule(match_text)
-        elif rule_type == "Keyword":
-            remove_keyword_rule(match_text, scope_path)
+        for selected_item in selected_items:
+            if selected_item in selected_rules:
+                continue
 
-        self.settings_message_label.setText("Removed rule: " + match_text)
+            selected_rules.append(selected_item)
+
+        removed_count = 0
+        removed_names = []
+
+        for selected_rule in selected_rules:
+            rule_type = selected_rule.text(0)
+            match_text = selected_rule.text(1)
+            scope_path = selected_rule.data(0, Qt.UserRole)
+
+            if rule_type == "Extension":
+                remove_extension_rule(match_text, scope_path)
+                removed_count = removed_count + 1
+                removed_names.append(match_text)
+            elif rule_type == "Keyword":
+                remove_keyword_rule(match_text, scope_path)
+                removed_count = removed_count + 1
+                removed_names.append(match_text)
+
+        if removed_count == 0:
+            self.settings_message_label.setText("Select a rule first.")
+            return
+
+        if removed_count == 1:
+            self.settings_message_label.setText("Removed rule: " + removed_names[0])
+        else:
+            self.settings_message_label.setText("Removed " + str(removed_count) + " rules.")
+
         self.clear_rule_form()
         self.populate_settings_table()
         self.refresh_after_rules_change()
@@ -1586,6 +1830,7 @@ class NeatifyWindow(QMainWindow):
         self.hide_browser_panels()
         self.history_panel.hide()
         self.settings_panel.show()
+        self.populate_rule_scope_options()
         self.populate_settings_table()
         self.show_settings_page(0)
         self.rule_match_input.setFocus()
@@ -1626,6 +1871,20 @@ class NeatifyWindow(QMainWindow):
             list_item.setData(0, Qt.UserRole, "")
             self.settings_rules_table.addTopLevelItem(list_item)
 
+        for rule in sorted(rules.get("extension_rules", []), key=lambda item: (item.get("extension", ""), item.get("scope", ""))):
+            extension = rule.get("extension", "")
+            category = rule.get("destination", "")
+            scope_path = rule.get("scope", "")
+            scope_text = "Everywhere"
+
+            if scope_path != "":
+                scope_text = self.get_folder_display_name(scope_path)
+
+            list_item = QTreeWidgetItem(["Extension", extension, category, scope_text])
+            list_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
+            list_item.setData(0, Qt.UserRole, scope_path)
+            self.settings_rules_table.addTopLevelItem(list_item)
+
         for rule in sorted(rules["keyword_rules"], key=lambda item: (item.get("keyword", ""), item.get("scope", ""))):
             keyword = rule.get("keyword", "")
             category = rule.get("destination", "")
@@ -1639,6 +1898,70 @@ class NeatifyWindow(QMainWindow):
             list_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
             list_item.setData(0, Qt.UserRole, scope_path)
             self.settings_rules_table.addTopLevelItem(list_item)
+
+    def populate_rule_scope_options(self):
+        current_scope = ""
+
+        if hasattr(self, "rule_scope_input"):
+            current_scope = self.rule_scope_input.currentData()
+
+            if current_scope is None:
+                current_scope = ""
+
+            self.rule_scope_input.blockSignals(True)
+            self.rule_scope_input.clear()
+
+        self.rule_scope_input.addItem("Everywhere", "")
+
+        current_folder = self.state.current_view_folder_path
+
+        if current_folder != "":
+            self.rule_scope_input.addItem("Current folder: " + self.get_folder_display_name(current_folder), current_folder)
+
+        for folder_path in get_common_folders():
+            normalized_path = os.path.abspath(os.path.expanduser(folder_path))
+
+            if normalized_path == os.path.abspath(os.path.expanduser(current_folder)):
+                continue
+
+            self.rule_scope_input.addItem(self.get_folder_display_name(normalized_path), normalized_path)
+
+        if current_scope != "":
+            self.set_rule_scope(current_scope)
+        else:
+            self.rule_scope_input.setCurrentIndex(0)
+
+        self.rule_scope_input.blockSignals(False)
+
+    def set_rule_scope(self, scope_path):
+        if scope_path is None:
+            scope_path = ""
+
+        normalized_scope = ""
+
+        if scope_path != "":
+            normalized_scope = os.path.abspath(os.path.expanduser(scope_path))
+
+        for index in range(self.rule_scope_input.count()):
+            item_scope = self.rule_scope_input.itemData(index)
+
+            if item_scope is None:
+                item_scope = ""
+
+            if item_scope == "":
+                normalized_item_scope = ""
+            else:
+                normalized_item_scope = os.path.abspath(os.path.expanduser(item_scope))
+
+            if normalized_item_scope == normalized_scope:
+                self.rule_scope_input.setCurrentIndex(index)
+                return
+
+        if normalized_scope != "":
+            self.rule_scope_input.addItem(self.get_folder_display_name(normalized_scope), normalized_scope)
+            self.rule_scope_input.setCurrentIndex(self.rule_scope_input.count() - 1)
+        else:
+            self.rule_scope_input.setCurrentIndex(0)
 
     def process_settings_command(self):
         self.add_rule_from_form()
@@ -1757,6 +2080,10 @@ class NeatifyWindow(QMainWindow):
             self.output_list.addTopLevelItem(list_item)
 
     def organize_selected_folder(self):
+        if self.arrange_thread is not None:
+            self.preview_help_label.setText("Arrange is already running")
+            return
+
         checked_moves = self.get_checked_arrange_moves()
 
         if len(checked_moves) == 0:
@@ -1766,9 +2093,9 @@ class NeatifyWindow(QMainWindow):
 
         folder_path = self.state.current_arrange_folder_path
         batch_id = create_move_id()
-        moved_count = 0
         errors = []
         taken_names_by_folder = {}
+        move_plan = []
 
         for move in checked_moves:
             old_path = move["old_path"]
@@ -1788,14 +2115,48 @@ class NeatifyWindow(QMainWindow):
                     errors.append("Unsafe destination: " + safe_destination)
                     continue
 
-                move_file(old_path, safe_destination, dry_run=False, move_id=batch_id)
-                moved_count = moved_count + 1
+                move_plan.append({
+                    "old_path": old_path,
+                    "new_path": safe_destination,
+                })
             except OSError as error:
                 errors.append(os.path.basename(old_path) + ": " + str(error))
 
+        if len(move_plan) == 0:
+            self.finish_arrange_result({
+                "move_id": batch_id,
+                "moved_count": 0,
+                "errors": errors,
+            })
+            return
+
+        self.pending_arrange_folder_path = folder_path
+        self.pending_arrange_errors = errors
+        self.preview_confirm_button.setEnabled(False)
+        self.preview_confirm_button.setText("Arranging...")
+        self.preview_cancel_button.setEnabled(False)
+        self.preview_help_label.setText("Arranging " + str(len(move_plan)) + " files. You can keep the app open.")
+
+        self.arrange_thread = QThread()
+        self.arrange_worker = ArrangeWorker(move_plan, batch_id)
+        self.arrange_worker.moveToThread(self.arrange_thread)
+        self.arrange_thread.started.connect(self.arrange_worker.run)
+        self.arrange_worker.finished.connect(self.finish_arrange_result)
+        self.arrange_worker.finished.connect(self.arrange_thread.quit)
+        self.arrange_worker.finished.connect(self.arrange_worker.deleteLater)
+        self.arrange_thread.finished.connect(self.arrange_thread.deleteLater)
+        self.arrange_thread.finished.connect(self.clear_arrange_worker)
+        self.arrange_thread.start()
+
+    def finish_arrange_result(self, batch_result):
+        folder_path = self.pending_arrange_folder_path or self.state.current_arrange_folder_path
+        moved_count = batch_result["moved_count"]
+        errors = list(self.pending_arrange_errors)
+        errors.extend(batch_result["errors"])
         self.state.current_arrange_folder_path = ""
         self.state.current_preview = {}
         self.set_arrange_preview_visible(False)
+        self.preview_cancel_button.setEnabled(True)
         self.folder_summary_label.setText(self.get_folder_status(self.state.selected_folder_path))
         self.update_folder_contents_list(self.state.current_view_folder_path)
 
@@ -1812,6 +2173,12 @@ class NeatifyWindow(QMainWindow):
                 lines.append("+" + str(len(errors) - 8) + " more errors")
 
         self.show_output("Done", lines)
+
+    def clear_arrange_worker(self):
+        self.arrange_thread = None
+        self.arrange_worker = None
+        self.pending_arrange_folder_path = ""
+        self.pending_arrange_errors = []
 
     def is_safe_arrange_destination(self, base_folder, destination):
         base_path = os.path.realpath(os.path.expanduser(base_folder))
@@ -1836,7 +2203,7 @@ class NeatifyWindow(QMainWindow):
         self.hide_browser_panels()
         self.settings_panel.hide()
         self.history_title.setText("History")
-        self.history_help_label.setText("Recent move and undo operations.")
+        self.history_help_label.setText("Recent arrange batches. Expand a batch to see every file moved.")
         self.history_panel.show()
         self.populate_history_table()
 
@@ -1847,7 +2214,7 @@ class NeatifyWindow(QMainWindow):
         self.hide_browser_panels()
         self.settings_panel.hide()
         self.history_title.setText("Undo")
-        self.history_help_label.setText("Select a moved row, check From and To, then press Undo Selected.")
+        self.history_help_label.setText("Select one or more active arrange batches, review the preview, then undo.")
         self.history_panel.show()
         self.populate_history_table()
 
@@ -1856,7 +2223,7 @@ class NeatifyWindow(QMainWindow):
         batches = self.get_history_batches()
 
         if len(batches) == 0:
-            self.history_table.addTopLevelItem(QTreeWidgetItem(["", "No history found yet.", "", "", ""]))
+            self.history_table.addTopLevelItem(QTreeWidgetItem(["", "No arrange batches yet.", "", "", ""]))
             self.update_history_action_buttons()
             return
 
@@ -1864,12 +2231,12 @@ class NeatifyWindow(QMainWindow):
             action = "Arrange"
 
             if batch["undone"]:
-                action = "Undone"
+                action = "Already undone"
 
             batch_item = QTreeWidgetItem([
                 batch["time"],
                 action,
-                str(len(batch["moves"])) + " files",
+                str(len(batch["moves"])) + " file" + ("" if len(batch["moves"]) == 1 else "s"),
                 batch["from"],
                 batch["to"],
             ])
@@ -1911,23 +2278,10 @@ class NeatifyWindow(QMainWindow):
         self.refresh_style(self.undo_selected_history_button)
 
     def get_history_batches(self):
-        history_path = get_history_path()
-
-        if not os.path.exists(history_path):
-            return []
-
-        with open(history_path, "r", encoding="utf-8") as history_file:
-            lines = history_file.readlines()
-
         batches = {}
         batch_order = []
 
-        for line in lines:
-            history_item = self.parse_history_line(line)
-
-            if history_item is None:
-                continue
-
+        for history_item in read_history_items():
             move_id = history_item["move_id"]
 
             if move_id not in batches:
@@ -1949,13 +2303,11 @@ class NeatifyWindow(QMainWindow):
             elif history_item["action"] == "UNDONE":
                 batches[move_id]["undone"] = True
 
-        grouped_batches = []
-
-        for move_id in reversed(batch_order):
-            batch = batches[move_id]
-
-            if len(batch["moves"]) > 0:
-                grouped_batches.append(batch)
+        grouped_batches = [
+            batch for batch in batches.values()
+            if len(batch["moves"]) > 0
+        ]
+        grouped_batches.sort(key=lambda batch: batch["time"], reverse=True)
 
         return grouped_batches
 
@@ -2259,6 +2611,9 @@ class NeatifyWindow(QMainWindow):
         return parse_history_line(line)
 
     def get_external_drive_paths(self):
+        if platform.system() == "Windows":
+            return get_windows_external_drive_paths()
+
         drive_paths = []
         volumes_folder = "/Volumes"
 
@@ -2352,7 +2707,7 @@ class NeatifyWindow(QMainWindow):
             return
 
         try:
-            folder_items = sorted(os.listdir(folder_path), key=str.lower)
+            folder_entries = sorted(os.scandir(folder_path), key=lambda entry: entry.name.lower())
         except PermissionError:
             self.folder_contents_list.addTopLevelItem(QTreeWidgetItem(["Neatify does not have permission to read this folder", "", "", ""]))
             return
@@ -2360,10 +2715,21 @@ class NeatifyWindow(QMainWindow):
             self.folder_contents_list.addTopLevelItem(QTreeWidgetItem(["Could not read folder: " + str(error), "", "", ""]))
             return
 
-        for item in folder_items:
-            full_path = os.path.join(folder_path, item)
+        rules = load_rules()
 
-            if os.path.isdir(full_path):
+        self.folder_contents_list.setUpdatesEnabled(False)
+
+        for entry in folder_entries:
+            item = entry.name
+            full_path = entry.path
+
+            try:
+                is_folder = entry.is_dir(follow_symlinks=False)
+                is_file = entry.is_file(follow_symlinks=False)
+            except OSError:
+                continue
+
+            if is_folder:
                 list_item = QTreeWidgetItem([
                     item,
                     "Folder",
@@ -2373,16 +2739,19 @@ class NeatifyWindow(QMainWindow):
                 list_item.setIcon(0, self.get_folder_icon())
                 list_item.setData(0, Qt.UserRole, full_path)
                 self.folder_contents_list.addTopLevelItem(list_item)
-            elif os.path.isfile(full_path):
+            elif is_file:
+                category = get_arrangement_for_file_with_rules(item, folder_path, rules)["destination"]
                 list_item = QTreeWidgetItem([
                     item,
-                    self.get_file_kind_text(item),
+                    self.get_file_kind_text(item, category),
                     self.get_file_size_text(full_path),
                     self.get_modified_text(full_path),
                 ])
-                list_item.setIcon(0, self.get_file_icon(item))
+                list_item.setIcon(0, self.get_file_icon(item, category))
                 list_item.setData(0, Qt.UserRole, full_path)
                 self.folder_contents_list.addTopLevelItem(list_item)
+
+        self.folder_contents_list.setUpdatesEnabled(True)
 
         if self.folder_contents_list.topLevelItemCount() == 0:
             self.folder_contents_list.addTopLevelItem(QTreeWidgetItem(["No items found", "", "", ""]))
@@ -2671,7 +3040,7 @@ class NeatifyWindow(QMainWindow):
             ])
             list_item.setCheckState(0, Qt.CheckState.Checked)
             list_item.setTextAlignment(3, Qt.AlignmentFlag.AlignCenter)
-            list_item.setIcon(1, self.get_file_icon(move["file_name"]))
+            list_item.setIcon(1, self.get_file_icon(move["file_name"], move["category"]))
             list_item.setData(0, Qt.UserRole, move["old_path"])
             list_item.setData(0, Qt.UserRole + 1, move)
             list_item.setData(1, Qt.UserRole, move["old_path"])
@@ -2964,8 +3333,9 @@ class NeatifyWindow(QMainWindow):
 
         return self.get_folder_icon()
 
-    def get_file_icon(self, file_name):
-        category = get_category_for_file(file_name)
+    def get_file_icon(self, file_name, category=None):
+        if category is None:
+            category = get_category_for_file(file_name)
 
         if category == "Images":
             return QIcon(get_project_path("assets", "icons", "file-image.svg"))
@@ -3009,8 +3379,9 @@ class NeatifyWindow(QMainWindow):
 
         return str(round(size / (1024 * 1024 * 1024), 1)) + " GB"
 
-    def get_file_kind_text(self, file_name):
-        category = get_category_for_file(file_name)
+    def get_file_kind_text(self, file_name, category=None):
+        if category is None:
+            category = get_category_for_file(file_name)
 
         if category != "Other":
             return category[:-1] if category.endswith("s") else category

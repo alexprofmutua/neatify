@@ -30,6 +30,59 @@ def test_undo_last_move_restores_file(isolated_app_files, make_file, tmp_path):
     assert not destination.exists()
 
 
+def test_batch_move_is_recorded_as_one_undoable_batch(isolated_app_files, make_file, tmp_path):
+    source_one = make_file(tmp_path / "one.pdf")
+    source_two = make_file(tmp_path / "two.jpg")
+    destination_one = tmp_path / "Documents" / "one.pdf"
+    destination_two = tmp_path / "Images" / "two.jpg"
+
+    result = neatify.move_files_batch([
+        {"old_path": str(source_one), "new_path": str(destination_one)},
+        {"old_path": str(source_two), "new_path": str(destination_two)},
+    ], move_id="batch_1")
+
+    assert result["moved_count"] == 2
+    assert result["errors"] == []
+    assert destination_one.exists()
+    assert destination_two.exists()
+    assert isolated_app_files["database_path"].exists()
+
+    history_items = neatify.read_history_items()
+    batch_history_items = [
+        item for item in history_items
+        if item["move_id"] == "batch_1" and item["action"] == "Moved"
+    ]
+
+    assert len(batch_history_items) == 2
+
+    undo_result = neatify.undo_move_by_id("batch_1")
+
+    assert undo_result == "Undone 2 files."
+    assert source_one.exists()
+    assert source_two.exists()
+    assert not destination_one.exists()
+    assert not destination_two.exists()
+
+
+def test_read_history_imports_legacy_text_history_once(isolated_app_files, make_file, tmp_path):
+    source = make_file(tmp_path / "report.pdf")
+    destination = tmp_path / "Documents" / "report.pdf"
+    destination.parent.mkdir()
+
+    isolated_app_files["history_path"].write_text(
+        "2026-01-01 00:00:00 | old_move | Moved | /old/report.pdf -> /old/Documents/report.pdf\n",
+        encoding="utf-8",
+    )
+
+    neatify.move_file(str(source), str(destination), dry_run=False, move_id="sqlite_move")
+
+    history_items = neatify.read_history_items()
+    second_read = neatify.read_history_items()
+
+    assert sorted(item["move_id"] for item in history_items) == ["old_move", "sqlite_move"]
+    assert sorted(item["move_id"] for item in second_read) == ["old_move", "sqlite_move"]
+
+
 @pytest.mark.fault_injection
 def test_failure_before_rename_leaves_source_in_place(isolated_app_files, make_file, monkeypatch, tmp_path):
     source = make_file(tmp_path / "report.pdf")
@@ -54,12 +107,12 @@ def test_history_failure_does_not_leave_untracked_move(isolated_app_files, make_
     destination = tmp_path / "Documents" / "report.pdf"
     destination.parent.mkdir()
 
-    original_write_history = neatify.write_history
+    original_record_batch_results = neatify.record_batch_results
 
-    def fail_history(action, old_path, new_path, move_id):
-        raise OSError("simulated history write failure")
+    def fail_history_commit(batch_id, moved_moves, failed_moves):
+        raise OSError("simulated sqlite history failure")
 
-    monkeypatch.setattr(neatify, "write_history", fail_history)
+    monkeypatch.setattr(neatify, "record_batch_results", fail_history_commit)
 
     with pytest.raises(OSError):
         neatify.move_file(str(source), str(destination), dry_run=False, move_id="move_history_failure")
@@ -72,7 +125,7 @@ def test_history_failure_does_not_leave_untracked_move(isolated_app_files, make_
     assert any(record.get("state") == "moved" for record in records)
     assert not any(record.get("state") == "history_committed" for record in records)
 
-    monkeypatch.setattr(neatify, "write_history", original_write_history)
+    monkeypatch.setattr(neatify, "record_batch_results", original_record_batch_results)
     recovery_result = neatify.recover_incomplete_operations()
 
     assert recovery_result == {"recovered": 1, "conflicts": 0}
@@ -95,17 +148,17 @@ def test_recovery_is_idempotent_after_history_failure(isolated_app_files, make_f
     destination = tmp_path / "Documents" / "report.pdf"
     destination.parent.mkdir()
 
-    original_write_history = neatify.write_history
+    original_record_batch_results = neatify.record_batch_results
 
-    def fail_history(action, old_path, new_path, move_id):
-        raise OSError("simulated history write failure")
+    def fail_history_commit(batch_id, moved_moves, failed_moves):
+        raise OSError("simulated sqlite history failure")
 
-    monkeypatch.setattr(neatify, "write_history", fail_history)
+    monkeypatch.setattr(neatify, "record_batch_results", fail_history_commit)
 
     with pytest.raises(OSError):
         neatify.move_file(str(source), str(destination), dry_run=False, move_id="move_idempotent")
 
-    monkeypatch.setattr(neatify, "write_history", original_write_history)
+    monkeypatch.setattr(neatify, "record_batch_results", original_record_batch_results)
 
     first_result = neatify.recover_incomplete_operations()
     second_result = neatify.recover_incomplete_operations()
