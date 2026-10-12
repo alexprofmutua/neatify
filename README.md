@@ -153,6 +153,18 @@ Output:
 release/Neatify-macOS.dmg
 ```
 
+Optional signing and notarization:
+
+```bash
+export MACOS_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_ID="you@example.com"
+export APPLE_TEAM_ID="TEAMID"
+export APPLE_APP_PASSWORD="app-specific-password"
+bash scripts/build_macos.sh
+```
+
+`MACOS_SIGN_IDENTITY` signs the app and DMG. The Apple ID variables submit the DMG to Apple's notarization service and staple the notarization ticket.
+
 ### Build Windows Installer
 
 Build on Windows:
@@ -184,6 +196,16 @@ Without Inno Setup, the script creates:
 release\Neatify-Windows.zip
 ```
 
+Optional Windows signing:
+
+```powershell
+$env:WINDOWS_CERT_PATH="C:\path\to\certificate.pfx"
+$env:WINDOWS_CERT_PASSWORD="certificate-password"
+.\scripts\build_windows.ps1
+```
+
+This signs `Neatify.exe` and, when Inno Setup is installed, `Neatify-Windows-Setup.exe`.
+
 ### Release Checklist
 
 Before uploading a release:
@@ -198,7 +220,7 @@ Before uploading a release:
 
 - Settings, rules, and history are saved in the user's app-data folder.
 - macOS and Windows builds should be created on their own operating systems.
-- The current app is not code-signed or notarized yet.
+- Code signing is optional in the build scripts and requires developer certificates.
 
 ## License
 
