@@ -11,7 +11,7 @@ from style import APP_STYLE
 from state import AppState
 from PySide6.QtCore import QObject, QEvent, QSize, Qt, QThread, Signal
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QStyle, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QHeaderView, QLineEdit, QListView, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QStyle, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 from components import create_folder_button
 from neatify import create_move_id, get_common_folders, get_history_path, get_unique_destination_with_name_cache, move_files_batch, open_item, parse_history_line, preview_organize_folder, read_history_items, undo_last_move, undo_move_by_id
 from rules import add_extension_rule, add_keyword_rule, find_with_filters, get_arrangement_for_file, get_arrangement_for_file_with_rules, get_category_for_file, load_rules, remove_extension_rule, remove_keyword_rule
@@ -622,8 +622,14 @@ class NeatifyWindow(QMainWindow):
         self.settings_body_layout = QHBoxLayout()
         self.settings_body_layout.setSpacing(18)
 
+        self.settings_menu_panel = QWidget()
+        self.settings_menu_panel.setObjectName("settingsMenuPanel")
+        self.settings_menu_panel.setFixedWidth(170)
+
         self.settings_menu_layout = QVBoxLayout()
+        self.settings_menu_layout.setContentsMargins(0, 0, 0, 0)
         self.settings_menu_layout.setSpacing(10)
+        self.settings_menu_panel.setLayout(self.settings_menu_layout)
 
         self.customization_tab_button = self.create_settings_tab_button("Customization")
         self.my_rules_tab_button = self.create_settings_tab_button("My Rules")
@@ -690,11 +696,18 @@ class NeatifyWindow(QMainWindow):
         customization_layout.addWidget(self.theme_message_label)
         customization_layout.addStretch()
 
-        self.my_rules_page = QWidget()
-        self.my_rules_page.setObjectName("settingsPage")
+        self.my_rules_page = QScrollArea()
+        self.my_rules_page.setObjectName("settingsPageScroll")
+        self.my_rules_page.setWidgetResizable(True)
+        self.my_rules_page.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        my_rules_content = QWidget()
+        my_rules_content.setObjectName("settingsPage")
         my_rules_layout = QVBoxLayout()
+        my_rules_layout.setContentsMargins(0, 0, 0, 0)
         my_rules_layout.setSpacing(14)
-        self.my_rules_page.setLayout(my_rules_layout)
+        my_rules_content.setLayout(my_rules_layout)
+        self.my_rules_page.setWidget(my_rules_content)
 
         my_rules_title = QLabel("My Rules")
         my_rules_title.setObjectName("settingsSectionTitle")
@@ -702,22 +715,30 @@ class NeatifyWindow(QMainWindow):
         my_rules_help = QLabel("Create simple rules for file types or words in file names.")
         my_rules_help.setObjectName("settingsHelp")
 
+        rule_form_panel = QWidget()
+        rule_form_panel.setObjectName("settingsFormPanel")
         rule_form_layout = QGridLayout()
-        rule_form_layout.setHorizontalSpacing(10)
-        rule_form_layout.setVerticalSpacing(6)
+        rule_form_layout.setContentsMargins(0, 8, 0, 8)
+        rule_form_layout.setHorizontalSpacing(14)
+        rule_form_layout.setVerticalSpacing(7)
+        rule_form_panel.setLayout(rule_form_layout)
         self.rule_type_input = QComboBox()
         self.rule_type_input.addItems(["Extension", "Keyword"])
+        self.prepare_dropdown(self.rule_type_input)
         self.rule_type_input.currentTextChanged.connect(self.update_rule_form_placeholders)
 
         self.rule_match_input = QComboBox()
         self.rule_match_input.setEditable(True)
         self.rule_match_input.addItems(["pdf", "jpg", "png", "mp4", "docx", "xlsx", "zip"])
+        self.prepare_dropdown(self.rule_match_input)
 
         self.rule_category_input = QComboBox()
         self.rule_category_input.setEditable(True)
         self.rule_category_input.addItems(["Documents", "Images", "Videos", "Audio", "Archives", "Spreadsheets", "Presentations", "Code", "Installers", "Other"])
+        self.prepare_dropdown(self.rule_category_input)
 
         self.rule_scope_input = QComboBox()
+        self.prepare_dropdown(self.rule_scope_input)
         self.populate_rule_scope_options()
 
         self.rule_type_input.currentTextChanged.connect(self.update_rule_sentence_preview)
@@ -726,7 +747,25 @@ class NeatifyWindow(QMainWindow):
         self.rule_scope_input.currentTextChanged.connect(self.update_rule_sentence_preview)
 
         self.add_rule_button = QPushButton("Add Rule")
-        self.add_rule_button.setObjectName("primaryCommand")
+        self.add_rule_button.setObjectName("addRuleButton")
+        self.add_rule_button.setMinimumWidth(110)
+        self.add_rule_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0A84FF;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 9px;
+                padding: 7px 16px;
+                font-size: 13px;
+                font-weight: 700;
+                min-height: 30px;
+                min-width: 110px;
+            }
+
+            QPushButton:hover {
+                background-color: #339CFF;
+            }
+        """)
         self.add_rule_button.clicked.connect(self.add_rule_from_form)
 
         self.remove_rule_button = QPushButton("Remove Selected")
@@ -754,9 +793,19 @@ class NeatifyWindow(QMainWindow):
         rule_form_layout.addWidget(self.rule_match_input, 1, 1)
         rule_form_layout.addWidget(self.rule_category_input, 1, 2)
         rule_form_layout.addWidget(self.rule_scope_input, 1, 3)
-        rule_form_layout.addWidget(self.add_rule_button, 1, 4)
-        rule_form_layout.addWidget(self.remove_rule_button, 1, 5)
-        rule_form_layout.addWidget(self.clear_rule_form_button, 1, 6)
+
+        rule_form_layout.setColumnStretch(0, 1)
+        rule_form_layout.setColumnStretch(1, 1)
+        rule_form_layout.setColumnStretch(2, 1)
+        rule_form_layout.setColumnStretch(3, 1)
+
+        rule_actions_layout = QHBoxLayout()
+        rule_actions_layout.setContentsMargins(0, 0, 0, 0)
+        rule_actions_layout.setSpacing(10)
+        rule_actions_layout.addWidget(self.add_rule_button)
+        rule_actions_layout.addWidget(self.remove_rule_button)
+        rule_actions_layout.addWidget(self.clear_rule_form_button)
+        rule_actions_layout.addStretch()
 
         self.rule_helper_label = QLabel("")
         self.rule_helper_label.setObjectName("settingsHelp")
@@ -766,7 +815,7 @@ class NeatifyWindow(QMainWindow):
         self.rule_sentence_label.setObjectName("rulePreviewLabel")
         self.update_rule_sentence_preview()
 
-        self.rule_priority_label = QLabel("Priority: keyword rules win before extension rules. Folder-specific rules win before everywhere rules.")
+        self.rule_priority_label = QLabel("Priority: keyword before extension, folder-specific before everywhere.")
         self.rule_priority_label.setObjectName("settingsHelp")
 
         self.settings_message_label = QLabel("")
@@ -783,6 +832,7 @@ class NeatifyWindow(QMainWindow):
         self.settings_rules_table.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.settings_rules_table.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.settings_rules_table.header().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.settings_rules_table.setMinimumHeight(240)
         self.settings_rules_table.itemClicked.connect(self.load_selected_rule_into_form)
 
         structure_title = QLabel("Arrangement Structure")
@@ -792,26 +842,45 @@ class NeatifyWindow(QMainWindow):
         structure_help.setObjectName("settingsHelp")
         structure_help.setWordWrap(True)
 
-        structure_layout = QHBoxLayout()
+        structure_panel = QWidget()
+        structure_panel.setObjectName("settingsFormPanel")
+        structure_layout = QGridLayout()
+        structure_layout.setContentsMargins(0, 8, 0, 0)
+        structure_layout.setHorizontalSpacing(14)
+        structure_layout.setVerticalSpacing(7)
+        structure_panel.setLayout(structure_layout)
         self.arrangement_structure_input = QComboBox()
         self.arrangement_structure_input.addItems(["Rule Only", "Year > Rule", "Year > Month > Rule", "Rule > Year", "Rule > Year > Month"])
+        self.prepare_dropdown(self.arrangement_structure_input)
         self.arrangement_structure_input.setCurrentText(self.app_settings["arrangement_structure"])
 
         self.arrangement_date_source_input = QComboBox()
         self.arrangement_date_source_input.addItems(["Modified Date", "Created/Added Date"])
+        self.prepare_dropdown(self.arrangement_date_source_input)
         self.arrangement_date_source_input.setCurrentText(self.app_settings["arrangement_date_source"])
 
         self.save_arrangement_settings_button = QPushButton("Save Arrangement Settings")
         self.save_arrangement_settings_button.setObjectName("primaryCommand")
         self.save_arrangement_settings_button.clicked.connect(self.save_arrangement_settings)
 
-        structure_layout.addWidget(self.arrangement_structure_input)
-        structure_layout.addWidget(self.arrangement_date_source_input)
-        structure_layout.addWidget(self.save_arrangement_settings_button)
+        structure_mode_label = QLabel("Structure")
+        structure_mode_label.setObjectName("fieldLabel")
+        structure_date_label = QLabel("Date source")
+        structure_date_label.setObjectName("fieldLabel")
+
+        structure_layout.addWidget(structure_mode_label, 0, 0)
+        structure_layout.addWidget(structure_date_label, 0, 1)
+        structure_layout.addWidget(self.arrangement_structure_input, 1, 0)
+        structure_layout.addWidget(self.arrangement_date_source_input, 1, 1)
+        structure_layout.addWidget(self.save_arrangement_settings_button, 1, 2)
+        structure_layout.setColumnStretch(0, 1)
+        structure_layout.setColumnStretch(1, 1)
+        structure_layout.setColumnStretch(2, 1)
 
         my_rules_layout.addWidget(my_rules_title)
         my_rules_layout.addWidget(my_rules_help)
-        my_rules_layout.addLayout(rule_form_layout)
+        my_rules_layout.addWidget(rule_form_panel)
+        my_rules_layout.addLayout(rule_actions_layout)
         my_rules_layout.addWidget(self.rule_helper_label)
         my_rules_layout.addWidget(self.rule_sentence_label)
         my_rules_layout.addWidget(self.rule_priority_label)
@@ -819,7 +888,7 @@ class NeatifyWindow(QMainWindow):
         my_rules_layout.addWidget(self.settings_rules_table, 1)
         my_rules_layout.addWidget(structure_title)
         my_rules_layout.addWidget(structure_help)
-        my_rules_layout.addLayout(structure_layout)
+        my_rules_layout.addWidget(structure_panel)
 
         self.search_page = QWidget()
         self.search_page.setObjectName("settingsPage")
@@ -837,6 +906,7 @@ class NeatifyWindow(QMainWindow):
 
         self.search_type_input = QComboBox()
         self.search_type_input.addItems(["All", "Files", "Folders", "Documents", "Images", "Videos", "Audio", "Archives", "Code", "pdf", "jpg", "png", "mp4"])
+        self.prepare_dropdown(self.search_type_input)
         self.search_type_input.setCurrentText(self.app_settings["search_type"])
 
         self.include_subfolders_checkbox = QCheckBox("Include subfolders")
@@ -882,8 +952,8 @@ class NeatifyWindow(QMainWindow):
         self.settings_stack.addWidget(self.search_page)
         self.settings_stack.addWidget(self.safety_page)
 
-        self.settings_body_layout.addLayout(self.settings_menu_layout, 1)
-        self.settings_body_layout.addWidget(self.settings_stack, 4)
+        self.settings_body_layout.addWidget(self.settings_menu_panel)
+        self.settings_body_layout.addWidget(self.settings_stack, 1)
 
         self.settings_layout.addLayout(settings_top_layout)
         self.settings_layout.addLayout(self.settings_body_layout, 1)
@@ -1438,6 +1508,36 @@ class NeatifyWindow(QMainWindow):
             button.clicked.connect(lambda: self.show_settings_page(3))
 
         return button
+
+    def prepare_dropdown(self, combo_box):
+        combo_box.setMaxVisibleItems(6)
+
+        popup_view = QListView()
+        popup_view.setObjectName("comboPopupList")
+        popup_view.setUniformItemSizes(True)
+        popup_view.setStyleSheet("""
+            QListView {
+                background-color: #FFFFFF;
+                color: #1D1D1F;
+                border: 1px solid #C9CDD3;
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+                font-size: 13px;
+            }
+
+            QListView::item {
+                min-height: 26px;
+                padding: 5px 8px;
+                border-radius: 6px;
+            }
+
+            QListView::item:selected {
+                background-color: #0A84FF;
+                color: #FFFFFF;
+            }
+        """)
+        combo_box.setView(popup_view)
 
     def show_settings_page(self, page_number):
         self.settings_stack.setCurrentIndex(page_number)

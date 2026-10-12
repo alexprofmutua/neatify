@@ -69,6 +69,29 @@ APP_STYLE = """
             color: #F6F3ED;
             selection-background-color: #3B3C38;
             border: 1px solid #40413F;
+            outline: none;
+            padding: 4px;
+        }
+
+        QListView#comboPopupList {
+            background-color: #20211F;
+            color: #F6F3ED;
+            border: 1px solid #40413F;
+            border-radius: 8px;
+            padding: 4px;
+            outline: none;
+            font-size: 13px;
+        }
+
+        QListView#comboPopupList::item {
+            min-height: 26px;
+            padding: 5px 8px;
+            border-radius: 6px;
+        }
+
+        QListView#comboPopupList::item:selected {
+            background-color: #3B3C38;
+            color: #FFFFFF;
         }
 
         QScrollBar:vertical {
@@ -229,24 +252,28 @@ APP_STYLE = """
             font-size: 26px;
             font-weight: 700;
             padding: 0px;
+            background-color: transparent;
         }
 
         QLabel#settingsSectionTitle {
             font-size: 18px;
             font-weight: 700;
             padding: 0px;
+            background-color: transparent;
         }
 
         QLabel#settingsHelp {
             color: #AAA9A1;
             font-size: 14px;
             padding: 0px;
+            background-color: transparent;
         }
 
         QLabel#settingsMessage {
             color: #29D85F;
             font-size: 14px;
             padding: 0px;
+            background-color: transparent;
         }
 
         QLabel#fieldLabel {
@@ -254,16 +281,26 @@ APP_STYLE = """
             font-size: 12px;
             font-weight: 700;
             padding: 0px;
+            background-color: transparent;
         }
 
         QLabel#rulePreviewLabel {
-            background-color: #111211;
+            background-color: transparent;
             color: #F6F3ED;
-            border: 1px solid #313330;
-            border-radius: 10px;
+            border: none;
+            border-left: 3px solid #29D85F;
+            border-radius: 0px;
             font-size: 14px;
             font-weight: 600;
-            padding: 10px 12px;
+            padding: 4px 0px 4px 10px;
+        }
+
+        QWidget#settingsMenuPanel {
+            background-color: transparent;
+        }
+
+        QWidget#settingsFormPanel {
+            background-color: transparent;
         }
 
         QTreeWidget#settingsRulesTable {
@@ -301,6 +338,15 @@ APP_STYLE = """
         }
 
         QWidget#settingsPage {
+            background-color: transparent;
+        }
+
+        QScrollArea#settingsPageScroll {
+            background-color: transparent;
+            border: none;
+        }
+
+        QScrollArea#settingsPageScroll QWidget {
             background-color: transparent;
         }
 
@@ -909,6 +955,22 @@ APP_STYLE = """
         QPushButton#primaryCommand:disabled {
             background-color: #3B3C38;
             color: #8E9088;
+        }
+
+        QPushButton#addRuleButton {
+            background-color: #0A84FF;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 9px;
+            padding: 7px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            min-height: 30px;
+            min-width: 110px;
+        }
+
+        QPushButton#addRuleButton:hover {
+            background-color: #339CFF;
         }
 
         QWidget#centralWidget {
