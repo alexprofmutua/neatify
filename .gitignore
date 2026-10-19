@@ -16,3 +16,6 @@ build/
 dist/
 *.spec
 assets/*.iconset/
+
+# Personal history exports stay local.
+neatify-history-*.csv
